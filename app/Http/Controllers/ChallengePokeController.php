@@ -127,9 +127,9 @@ class ChallengePokeController extends Controller
         $users = count($senderIds) === 0
             ? collect()
             : User::query()
-                ->whereIn('_id', $senderIds)
-                ->get()
-                ->keyBy(fn($user) => (string) $user->getKey());
+            ->whereIn('_id', $senderIds)
+            ->get()
+            ->keyBy(fn($user) => (string) $user->getKey());
 
         $items = $rows
             ->map(function (ChallengePoke $row) use ($users) {

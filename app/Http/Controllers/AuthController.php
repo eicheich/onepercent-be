@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\UserFollow;
 use App\Models\UserPersonalization;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -11,6 +12,27 @@ use Illuminate\Support\Facades\Hash;
 class AuthController extends Controller
 {
     private const MAX_TAGS = 5;
+
+    public function me(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $userId = (string) $user->getKey();
+        $user->load('personalization');
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'id' => $userId,
+                'name' => $user->name,
+                'email' => $user->email,
+                'birth_date' => $user->birth_date?->toDateString(),
+                'gender' => $user->gender,
+                'tags' => $user->personalization?->tags ?? [],
+                'followers_count' => UserFollow::query()->where('following_id', $userId)->count(),
+                'following_count' => UserFollow::query()->where('follower_id', $userId)->count(),
+            ],
+        ]);
+    }
 
     public function register(Request $request): JsonResponse
     {
@@ -107,10 +129,12 @@ class AuthController extends Controller
             'tags.*' => ['string', 'min:2', 'max:30'],
         ]);
 
-        if (! array_key_exists('name', $validated)
+        if (
+            ! array_key_exists('name', $validated)
             && ! array_key_exists('birth_date', $validated)
             && ! array_key_exists('gender', $validated)
-            && ! array_key_exists('tags', $validated)) {
+            && ! array_key_exists('tags', $validated)
+        ) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'No profile fields provided for update.',
