@@ -6,6 +6,7 @@ use App\Models\Challenge;
 use App\Models\UserDailyChallenge;
 use App\Models\UserPersonalization;
 use App\Services\GeminiChallengeService;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -46,12 +47,7 @@ class DailyChallengeController extends Controller
     {
         $userId = (string) $request->user()->getKey();
         $today = now()->toDateString();
-
-        $challenge = UserDailyChallenge::query()
-            ->with('challenge')
-            ->where('user_id', $userId)
-            ->where('challenge_date', $today)
-            ->first();
+        $challenge = $this->findDailyChallengeForDate($userId, $today);
 
         return response()->json([
             'status' => 'success',
@@ -65,11 +61,7 @@ class DailyChallengeController extends Controller
         $userId = (string) $user->getKey();
         $today = now()->toDateString();
 
-        $existing = UserDailyChallenge::query()
-            ->with('challenge')
-            ->where('user_id', $userId)
-            ->where('challenge_date', $today)
-            ->first();
+        $existing = $this->findDailyChallengeForDate($userId, $today);
 
         if ($existing) {
             return response()->json([
@@ -96,9 +88,8 @@ class DailyChallengeController extends Controller
         $reusableChallenge = $this->findReusableChallenge($tags, $seenChallengeIds);
 
         if ($reusableChallenge !== null) {
-            $challenge = $this->createDailyAssignment($userId, $today, $reusableChallenge, $tags, [
+            $challenge = $this->createDailyAssignment($userId, $today, $reusableChallenge, [
                 'provider' => 'reuse_pool',
-                'source_challenge_id' => (string) $reusableChallenge->getKey(),
                 'challenge_signature' => $reusableChallenge->signature,
             ]);
 
@@ -143,7 +134,7 @@ class DailyChallengeController extends Controller
             ], 409);
         }
 
-        $challenge = $this->createDailyAssignment($userId, $today, $challengePool, $tags, [
+        $challenge = $this->createDailyAssignment($userId, $today, $challengePool, [
             'provider' => 'gemini',
             'model' => $generated['model'],
             'challenge_signature' => $signature,
@@ -159,26 +150,44 @@ class DailyChallengeController extends Controller
     public function complete(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'user_daily_challenge_id' => ['nullable', 'string', 'max:120'],
             'reflection' => ['nullable', 'string', 'min:5', 'max:1200'],
         ]);
 
         $userId = (string) $request->user()->getKey();
         $today = now()->toDateString();
+        $userDailyChallengeId = trim((string) ($validated['user_daily_challenge_id'] ?? ''));
 
-        $challenge = UserDailyChallenge::query()
+        $challengeQuery = UserDailyChallenge::query()
             ->with('challenge')
-            ->where('user_id', $userId)
-            ->where('challenge_date', $today)
-            ->first();
+            ->where('user_id', $userId);
+
+        if ($userDailyChallengeId !== '') {
+            $challengeQuery->where('_id', $userDailyChallengeId);
+        } else {
+            $dayStart = Carbon::parse($today)->startOfDay();
+            $dayEnd = Carbon::parse($today)->endOfDay();
+
+            $challengeQuery->where(function ($query) use ($today, $dayStart, $dayEnd) {
+                $query->where('challenge_date', $today)
+                    ->orWhereBetween('challenge_date', [$dayStart, $dayEnd]);
+            });
+        }
+
+        $challenge = $challengeQuery->first();
 
         if ($challenge === null) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'No daily challenge found for today.',
+                'message' => $userDailyChallengeId !== ''
+                    ? 'Daily challenge with the given id was not found.'
+                    : 'No daily challenge found for today.',
             ], 404);
         }
 
-        return $this->completeAssignment($challenge, $today, $validated['reflection'] ?? null);
+        $challengeDate = $challenge->challenge_date?->toDateString() ?? $today;
+
+        return $this->completeAssignment($challenge, $challengeDate, $validated['reflection'] ?? null);
     }
 
     private function completeAssignment(UserDailyChallenge $challenge, string $today, ?string $reflection): JsonResponse
@@ -223,6 +232,9 @@ class DailyChallengeController extends Controller
     private function buildChallengeResponse(UserDailyChallenge $challenge, string $fallbackDate): array
     {
         $expiresAt = $challenge->expires_at;
+        $baseChallenge = $this->resolveBaseChallenge($challenge);
+        $estimatedMinutes = (int) ($baseChallenge?->estimated_minutes ?? $challenge->estimated_minutes ?? 15);
+        $tags = $baseChallenge?->tags ?? $challenge->tags ?? [];
 
         return [
             'id' => (string) $challenge->getKey(),
@@ -230,8 +242,8 @@ class DailyChallengeController extends Controller
             'date' => $challenge->challenge_date?->toDateString() ?? $fallbackDate,
             'title' => $this->resolveTitle($challenge),
             'description' => $this->resolveDescription($challenge),
-            'estimated_minutes' => (int) ($challenge->estimated_minutes ?? 15),
-            'tags' => $challenge->tags ?? [],
+            'estimated_minutes' => $estimatedMinutes,
+            'tags' => $tags,
             'is_completed' => (bool) ($challenge->is_completed ?? false),
             'completed_at' => $challenge->completed_at?->toIso8601String(),
             'expires_at' => $expiresAt?->toIso8601String(),
@@ -390,7 +402,7 @@ class DailyChallengeController extends Controller
         return sha1(Str::lower(trim($title) . '|' . trim($content)));
     }
 
-    private function createDailyAssignment(string $userId, string $challengeDate, Challenge $challengePool, array $userTags, array $metadata): UserDailyChallenge
+    private function createDailyAssignment(string $userId, string $challengeDate, Challenge $challengePool, array $metadata): UserDailyChallenge
     {
         $estimatedMinutes = max(1, (int) ($challengePool->estimated_minutes ?? 15));
 
@@ -398,15 +410,30 @@ class DailyChallengeController extends Controller
             'user_id' => $userId,
             'challenge_id' => (string) $challengePool->getKey(),
             'challenge_date' => $challengeDate,
-            'title' => $challengePool->title,
-            'content' => $challengePool->content,
-            'estimated_minutes' => $estimatedMinutes,
-            'tags' => $userTags,
+            // Keep assignment lean: source of truth for challenge content is the challenges collection.
+            'estimated_minutes' => null,
+            'tags' => null,
             'metadata' => $metadata,
             'is_completed' => false,
             'completed_at' => null,
             'expires_at' => now()->addMinutes($estimatedMinutes),
         ])->load('challenge');
+    }
+
+    private function findDailyChallengeForDate(string $userId, string $date): ?UserDailyChallenge
+    {
+        $dayStart = Carbon::parse($date)->startOfDay();
+        $dayEnd = Carbon::parse($date)->endOfDay();
+
+        return UserDailyChallenge::query()
+            ->with('challenge')
+            ->where('user_id', $userId)
+            ->where(function ($query) use ($date, $dayStart, $dayEnd) {
+                $query->where('challenge_date', $date)
+                    ->orWhereBetween('challenge_date', [$dayStart, $dayEnd]);
+            })
+            ->orderBy('created_at', 'desc')
+            ->first();
     }
 
     private function resolveBaseChallenge(UserDailyChallenge $challenge): ?Challenge
