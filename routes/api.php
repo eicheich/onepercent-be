@@ -2,7 +2,9 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DailyChallengeController;
+use App\Http\Controllers\FollowController;
 use App\Http\Controllers\PersonalizationController;
+use App\Models\UserFollow;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -22,6 +24,8 @@ Route::get('/user', function (Request $request) {
             'birth_date' => $user->birth_date?->toDateString(),
             'gender' => $user->gender,
             'tags' => $user->personalization?->tags ?? [],
+            'followers_count' => UserFollow::query()->where('following_id', (string) $user->getKey())->count(),
+            'following_count' => UserFollow::query()->where('follower_id', (string) $user->getKey())->count(),
         ],
     ]);
 })->middleware('auth:sanctum');
@@ -32,6 +36,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/personalization/tags', [PersonalizationController::class, 'tags']);
     Route::post('/personalization', [PersonalizationController::class, 'store']);
+
+    Route::post('/user/follow/{userId}', [FollowController::class, 'follow']);
+    Route::delete('/user/follow/{userId}', [FollowController::class, 'unfollow']);
+    Route::get('/user/followers', [FollowController::class, 'followers']);
+    Route::get('/user/following', [FollowController::class, 'following']);
 
     Route::get('/challenge/daily', [DailyChallengeController::class, 'today']);
     Route::post('/challenge/daily/generate', [DailyChallengeController::class, 'generate']);
