@@ -19,12 +19,17 @@ Route::get('/user', function (Request $request) {
             'id' => (string) $user->getKey(),
             'name' => $user->name,
             'email' => $user->email,
+            'birth_date' => $user->birth_date?->toDateString(),
+            'gender' => $user->gender,
             'tags' => $user->personalization?->tags ?? [],
         ],
     ]);
 })->middleware('auth:sanctum');
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::put('/user/profile', [AuthController::class, 'updateProfile']);
+    Route::put('/user/password', [AuthController::class, 'updatePassword']);
+
     Route::get('/personalization/tags', [PersonalizationController::class, 'tags']);
     Route::post('/personalization', [PersonalizationController::class, 'store']);
 
