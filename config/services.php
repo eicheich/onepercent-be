@@ -37,7 +37,7 @@ return [
 
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY'),
-        'model' => env('GEMINI_MODEL', 'gemini-1.5-flash'), // Gunakan 1.5 jika 2.0 belum stabil di regionmu
+        'model' => env('GEMINI_MODEL', 'gemini-1.5-flash'), 
         'base_url' => 'https://generativelanguage.googleapis.com/v1beta',
     ],
 

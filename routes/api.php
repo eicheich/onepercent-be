@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DailyChallengeController;
+use App\Http\Controllers\ChallengePokeController;
 use App\Http\Controllers\FollowController;
 use App\Http\Controllers\PersonalizationController;
 use App\Models\UserFollow;
@@ -45,5 +46,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/challenge/daily', [DailyChallengeController::class, 'today']);
     Route::post('/challenge/daily/generate', [DailyChallengeController::class, 'generate']);
     Route::post('/challenge/daily/complete', [DailyChallengeController::class, 'complete']);
+    Route::post('/challenge/poke/{userId}', [ChallengePokeController::class, 'send']);
+    Route::get('/challenge/pokes/inbox', [ChallengePokeController::class, 'inbox']);
+    Route::post('/challenge/pokes/{pokeId}/read', [ChallengePokeController::class, 'markAsRead']);
     Route::get('/challenge/test-ai', [DailyChallengeController::class, 'testAi']);
 });
