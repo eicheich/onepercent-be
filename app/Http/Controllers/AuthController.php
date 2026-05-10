@@ -102,7 +102,8 @@ class AuthController extends Controller
             ], 401);
         }
         $token = $user->createToken('api-token')->plainTextToken;
-
+        $user->load('personalization');
+        $hasTags = !empty($user->personalization?->tags);
         return response()->json([
             'status' => 'success',
             'message' => 'Login success.',
@@ -113,6 +114,7 @@ class AuthController extends Controller
                 'birth_date' => $user->birth_date?->toDateString(),
                 'gender' => $user->gender,
                 'token' => $token,
+                'has_tags' => $hasTags,
             ],
         ]);
     }

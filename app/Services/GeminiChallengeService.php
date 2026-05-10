@@ -460,4 +460,89 @@ PROMPT;
 
         return 15;
     }
+    public function scoreProof(
+        string $base64File,
+        string $mimeType,
+        string $challengeTitle,
+        string $challengeDescription
+    ): array {
+        $apiKey = (string) config('services.gemini.api_key');
+        $configuredModel = (string) config('services.gemini.model', 'gemini-1.5-flash');
+        $baseUrl = rtrim((string) config(
+            'services.gemini.base_url',
+            'https://generativelanguage.googleapis.com/v1beta'
+        ), '/');
+
+        $prompt = <<<PROMPT
+You are evaluating a user's submission for a daily self-improvement challenge.
+
+Challenge Title: {$challengeTitle}
+Challenge Description: {$challengeDescription}
+
+The user has submitted a file as proof of completing this challenge.
+Please evaluate the submission and provide:
+1. A score from 0 to 100 based on relevance and quality
+2. Brief constructive feedback (max 30 words)
+
+Return ONLY in this exact format:
+Score: <integer 0-100>
+Feedback: <max 30 words>
+PROMPT;
+
+        $response = \Illuminate\Support\Facades\Http::withQueryParameters(['key' => $apiKey])
+            ->timeout(30)
+            ->post("{$baseUrl}/models/{$configuredModel}:generateContent", [
+                'contents' => [
+                    [
+                        'parts' => [
+                            [
+                                'inline_data' => [
+                                    'mime_type' => $mimeType,
+                                    'data'      => $base64File,
+                                ],
+                            ],
+                            ['text' => $prompt],
+                        ],
+                    ],
+                ],
+                'generationConfig' => [
+                    'temperature'     => 0.2,
+                    'maxOutputTokens' => 80,
+                ],
+            ]);
+
+        if (!$response->successful()) {
+            throw new \RuntimeException('Gemini scoring failed: ' . $response->body());
+        }
+
+        $text = trim((string) data_get(
+            $response->json(),
+            'candidates.0.content.parts.0.text',
+            ''
+        ));
+
+        return $this->parseScoreResponse($text);
+    }
+
+    private function parseScoreResponse(string $text): array
+    {
+        $score    = 70; // default
+        $feedback = 'Good effort on completing the challenge!';
+
+        $lines = preg_split('/\r\n|\r|\n/', $text) ?: [];
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (str_starts_with(strtolower($line), 'score:')) {
+                $raw = trim(str_replace('Score:', '', $line));
+                if (preg_match('/\d+/', $raw, $m)) {
+                    $score = max(0, min(100, (int) $m[0]));
+                }
+            }
+            if (str_starts_with(strtolower($line), 'feedback:')) {
+                $feedback = trim(str_replace('Feedback:', '', $line));
+            }
+        }
+
+        return compact('score', 'feedback');
+    }
 }

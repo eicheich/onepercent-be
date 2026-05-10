@@ -6,7 +6,8 @@ use MongoDB\Laravel\Eloquent\Model;
 
 class UserPersonalization extends Model
 {
-    protected $collection = 'user_personalization';
+    protected $connection = 'mongodb';
+    protected $collection = 'user_personalizations';
 
     protected $fillable = [
         'user_id',
