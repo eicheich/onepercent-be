@@ -1,13 +1,60 @@
 <?php
 
 use App\Models\User;
+use App\Http\Controllers\Web\AdminController;
+use App\Http\Controllers\Web\AuthWebController;
+use App\Http\Controllers\Web\DashboardController;
+use App\Http\Controllers\Web\ProfileWebController;
+use App\Http\Controllers\Web\FriendsWebController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
+Route::get('/', fn() => view('landing'))->name('landing');
+
+Route::middleware('guest.web')->group(function () {
+    Route::get('/login', [AuthWebController::class, 'showLogin'])->name('web.login');
+    Route::post('/login', [AuthWebController::class, 'login'])->name('web.login.post');
+    Route::get('/register', [AuthWebController::class, 'showRegister'])->name('web.register');
+    Route::post('/register', [AuthWebController::class, 'register'])->name('web.register.post');
+    // Google OAuth web
+    Route::get(
+        '/auth/google',
+        [AuthWebController::class, 'redirectToGoogle']
+    )->name('web.google');
+    Route::get(
+        '/auth/google/callback',
+        [AuthWebController::class, 'handleGoogleCallback']
+    )->name('web.google.callback');
+});
+Route::get('/notifications', [DashboardController::class, 'notifications'])
+    ->name('web.notifications');
+Route::post('/notifications/read-all', [DashboardController::class, 'readAllNotifications'])
+    ->name('web.notifications.read-all');
+
+// ─── User routes ──────────────────────────────────
+Route::middleware('auth.web')->prefix('app')->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('web.dashboard');
+    Route::get('/challenge', [DashboardController::class, 'challenge'])->name('web.challenge');
+    Route::get('/leaderboard', [DashboardController::class, 'leaderboard'])->name('web.leaderboard');
+    Route::get('/profile', [ProfileWebController::class, 'index'])->name('web.profile');
+    Route::post('/profile', [ProfileWebController::class, 'update'])->name('web.profile.update');
+    Route::post('/logout', [AuthWebController::class, 'logout'])->name('web.logout');
+    Route::get('/tags', [DashboardController::class, 'showTags'])->name('web.tags');
+    Route::post('/tags', [DashboardController::class, 'saveTags'])->name('web.tags.save');
+    Route::post('/challenge/upload-proof', [DashboardController::class, 'uploadProof'])->name('web.challenge.upload');
+    Route::get('/friends', [FriendsWebController::class, 'index'])->name('web.friends');
+    Route::get('/friends/search', [FriendsWebController::class, 'search'])->name('web.friends.search');
+    Route::post('/friends/follow/{id}', [FriendsWebController::class, 'follow'])->name('web.friends.follow');
+    Route::post('/friends/unfollow/{id}', [FriendsWebController::class, 'unfollow'])->name('web.friends.unfollow');
 });
 
+// ─── Admin routes ─────────────────────────────────
+Route::middleware('auth.admin')->prefix('admin')->group(function () {
+    Route::get('/', [AdminController::class, 'dashboard'])->name('admin.dashboard');
+    Route::get('/users', [AdminController::class, 'users'])->name('admin.users');
+    Route::get('/challenges', [AdminController::class, 'challenges'])->name('admin.challenges');
+    Route::delete('/users/{id}', [AdminController::class, 'deleteUser'])->name('admin.users.delete');
+});
 
 Route::get('/test-users', function () {
     try {

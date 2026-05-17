@@ -13,6 +13,15 @@ class UserPersonalization extends Model
         'user_id',
         'tags',
     ];
+     public const AVAILABLE_TAGS = [
+        'productivity',
+        'career',
+        'finance',
+        'health',
+        'study',
+        'self_growth',
+        'motivation',
+    ];
 
     protected function casts(): array
     {

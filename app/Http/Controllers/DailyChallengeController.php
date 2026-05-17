@@ -410,74 +410,78 @@ class DailyChallengeController extends Controller
         return $challenge->challenge()->first();
     }
     private function completeAssignment(UserDailyChallenge $challenge, string $today, ?string $reflection): JsonResponse
-{
-    $reflectionText = $reflection !== null ? trim($reflection) : null;
-    $metadata = (array) ($challenge->metadata ?? []);
+    {
+        $reflectionText = $reflection !== null ? trim($reflection) : null;
+        $metadata = (array) ($challenge->metadata ?? []);
 
-    if ((bool) $challenge->is_completed) {
+        if ((bool) $challenge->is_completed) {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Daily challenge already completed.',
+                'data' => $this->buildChallengeResponse($challenge, $today),
+            ]);
+        }
+
+        if ($challenge->expires_at !== null && now()->greaterThan($challenge->expires_at)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Challenge completion time has expired.',
+                'data' => $this->buildChallengeResponse($challenge, $today),
+            ], 422);
+        }
+
+        if ($reflectionText !== null) {
+            $metadata['reflection'] = $reflectionText;
+            $metadata['reflection_submitted_at'] = now()->toIso8601String();
+        }
+
+        $challenge->forceFill([
+            'is_completed' => true,
+            'completed_at' => now(),
+            'metadata'     => $metadata,
+        ])->save();
+
+        // Update streak user
+        $this->updateStreak($challenge->user_id);
+        $achievementService = app(\App\Services\AchievementService::class);
+        $newlyUnlocked = $achievementService->checkAndUnlock($challenge->user_id);
+        $responseData = $this->buildChallengeResponse($challenge->fresh(['challenge']), $today);
+        $responseData['newly_unlocked_achievements'] = $newlyUnlocked;
+
         return response()->json([
-            'status' => 'success',
-            'message' => 'Daily challenge already completed.',
-            'data' => $this->buildChallengeResponse($challenge, $today),
+            'status'  => 'success',
+            'message' => 'Daily challenge marked as completed.',
+            'data'    => $responseData,
         ]);
     }
 
-    if ($challenge->expires_at !== null && now()->greaterThan($challenge->expires_at)) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Challenge completion time has expired.',
-            'data' => $this->buildChallengeResponse($challenge, $today),
-        ], 422);
+    private function updateStreak(string $userId): void
+    {
+        $user = \App\Models\User::find($userId);
+        if ($user === null) return;
+
+        $today = now()->toDateString();
+        $yesterday = now()->subDay()->toDateString();
+        $lastDate = $user->last_completed_date?->toDateString();
+
+        if ($lastDate === $today) {
+            // Sudah complete hari ini, tidak perlu update
+            return;
+        }
+
+        if ($lastDate === $yesterday) {
+            // Lanjut streak
+            $user->current_streak = ($user->current_streak ?? 0) + 1;
+        } else {
+            // Streak putus, mulai dari 1
+            $user->current_streak = 1;
+        }
+
+        if ($user->current_streak > ($user->longest_streak ?? 0)) {
+            $user->longest_streak = $user->current_streak;
+        }
+
+        $user->last_completed_date = $today;
+        $user->save();
     }
-
-    if ($reflectionText !== null) {
-        $metadata['reflection'] = $reflectionText;
-        $metadata['reflection_submitted_at'] = now()->toIso8601String();
-    }
-
-    $challenge->forceFill([
-        'is_completed' => true,
-        'completed_at' => now(),
-        'metadata'     => $metadata,
-    ])->save();
-
-    // Update streak user
-    $this->updateStreak($challenge->user_id);
-
-    return response()->json([
-        'status' => 'success',
-        'message' => 'Daily challenge marked as completed.',
-        'data' => $this->buildChallengeResponse($challenge->fresh(['challenge']), $today),
-    ]);
-}
-
-private function updateStreak(string $userId): void
-{
-    $user = \App\Models\User::find($userId);
-    if ($user === null) return;
-
-    $today = now()->toDateString();
-    $yesterday = now()->subDay()->toDateString();
-    $lastDate = $user->last_completed_date?->toDateString();
-
-    if ($lastDate === $today) {
-        // Sudah complete hari ini, tidak perlu update
-        return;
-    }
-
-    if ($lastDate === $yesterday) {
-        // Lanjut streak
-        $user->current_streak = ($user->current_streak ?? 0) + 1;
-    } else {
-        // Streak putus, mulai dari 1
-        $user->current_streak = 1;
-    }
-
-    if ($user->current_streak > ($user->longest_streak ?? 0)) {
-        $user->longest_streak = $user->current_streak;
-    }
-
-    $user->last_completed_date = $today;
-    $user->save();
-}
 }

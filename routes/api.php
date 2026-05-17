@@ -9,8 +9,10 @@ use App\Http\Controllers\LeaderboardController;
 use App\Http\Controllers\PersonalizationController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ProofController;
+use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\StreakController;
+use App\Http\Controllers\AchievementController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -26,6 +28,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [AuthController::class, 'me']);
         Route::put('/profile', [AuthController::class, 'updateProfile']);
         Route::put('/password', [AuthController::class, 'updatePassword']);
+        Route::post('/avatar', [AvatarController::class, 'upload']);
+        Route::delete('/account', [AuthController::class, 'deleteAccount']);
         Route::get('/streak', [StreakController::class, 'myStreak']);
         Route::get('/search', [SearchController::class, 'searchUsers']);
 
@@ -52,11 +56,20 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/pokes/inbox', [ChallengePokeController::class, 'inbox']);
         Route::post('/pokes/{pokeId}/read', [ChallengePokeController::class, 'markAsRead']);
         Route::get('/test-ai', [DailyChallengeController::class, 'testAi']);
+        Route::post(
+            '/pokes/read-all',
+            [ChallengePokeController::class, 'markAllAsRead']
+        );
     });
 
     // Leaderboard
     Route::prefix('leaderboard')->group(function () {
         Route::get('/global', [LeaderboardController::class, 'global']);
         Route::get('/friends', [LeaderboardController::class, 'friends']);
+    });
+    // Achievement
+    Route::prefix('achievements')->group(function () {
+        Route::get('/', [AchievementController::class, 'index']);
+        Route::post('/check', [AchievementController::class, 'check']);
     });
 });

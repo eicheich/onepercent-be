@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\UserFollow;
 use App\Models\UserPersonalization;
+use App\Models\ChallengePoke;
+use App\Models\UserDailyChallenge;
+use App\Models\UserAchievement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -27,6 +30,7 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'birth_date' => $user->birth_date?->toDateString(),
                 'gender' => $user->gender,
+                'avatar' => $user->avatar,
                 'tags' => $user->personalization?->tags ?? [],
                 'followers_count' => UserFollow::query()->where('following_id', $userId)->count(),
                 'following_count' => UserFollow::query()->where('follower_id', $userId)->count(),
@@ -207,6 +211,33 @@ class AuthController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Password updated successfully.',
+        ]);
+    }
+
+    // Di AuthController.php tambah:
+    public function deleteAccount(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $userId = (string) $user->getKey();
+
+        // Hapus semua data user
+       UserPersonalization::where('user_id', $userId)->delete();
+       UserDailyChallenge::where('user_id', $userId)->delete();
+       UserFollow::where('follower_id', $userId)->delete();
+       UserFollow::where('following_id', $userId)->delete();
+       ChallengePoke::where('sender_id', $userId)->delete();
+       ChallengePoke::where('receiver_id', $userId)->delete();
+       UserAchievement::where('user_id', $userId)->delete();
+
+        // Revoke semua token
+        $user->tokens()->delete();
+
+        // Hapus user
+        $user->delete();
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Account deleted successfully.',
         ]);
     }
 }

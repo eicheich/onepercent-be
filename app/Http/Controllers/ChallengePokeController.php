@@ -106,6 +106,20 @@ class ChallengePokeController extends Controller
             ],
         ], 201);
     }
+    public function markAllAsRead(Request $request): JsonResponse
+    {
+        $authId = (string) $request->user()->getKey();
+
+        ChallengePoke::query()
+            ->where('receiver_id', $authId)
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'All pokes marked as read.',
+        ]);
+    }
 
     public function inbox(Request $request): JsonResponse
     {
@@ -140,6 +154,7 @@ class ChallengePokeController extends Controller
                     'sender' => $sender === null ? null : [
                         'id' => (string) $sender->getKey(),
                         'name' => $sender->name,
+                        'avatar' => $sender->avatar ?? null,
                     ],
                     'user_daily_challenge_id' => (string) $row->user_daily_challenge_id,
                     'challenge_id' => (string) ($row->challenge_id ?? ''),

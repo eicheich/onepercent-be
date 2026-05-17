@@ -33,6 +33,7 @@ class LeaderboardController extends Controller
                 'rank'           => $rank,
                 'id'             => $userId,
                 'name'           => $user->name,
+                'avatar'         => $user->avatar ?? null,
                 'current_streak' => (int) ($user->current_streak ?? 0),
                 'longest_streak' => (int) ($user->longest_streak ?? 0),
                 'is_me'          => $userId === $authId,
