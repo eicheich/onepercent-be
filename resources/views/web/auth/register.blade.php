@@ -25,8 +25,8 @@
     <div class="w-full max-w-md">
 
         <div class="text-center mb-8">
-            <div class="w-16 h-16 rounded-3xl bg-primary mx-auto flex items-center justify-center mb-4">
-                <span class="text-white font-bold text-2xl">1%</span>
+            <div class="w-16 h-16 rounded-3xl mx-auto flex items-center justify-center mb-4">
+                <span class="text-white font-bold text-2xl"><img src="/img/onboard1.png" alt="">%</span>
             </div>
             <h1 class="text-2xl font-bold text-gray-800">Create account</h1>
             <p class="text-gray-400 mt-1">Start your 1% journey</p>
@@ -61,7 +61,6 @@
                         <option value="">Select gender</option>
                         <option value="male">Male</option>
                         <option value="female">Female</option>
-                        <option value="other">Other</option>
                     </select>
                 </div>
                 <div>

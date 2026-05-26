@@ -23,30 +23,35 @@
     </script>
 </head>
 
-<body class="bg-[#F5F5F7] min-h-screen flex items-center justify-center p-4 md:p-6 relative overflow-hidden selection:bg-[#B28CFF]/30 selection:text-[#9261F3]">
+<body
+    class="bg-[#F5F5F7] min-h-screen flex flex-col items-center justify-center py-12 px-4 md:px-6 relative overflow-x-hidden selection:bg-[#B28CFF]/30 selection:text-[#9261F3]">
 
     {{-- Dekorasi Background --}}
-    <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-gradient-to-br from-[#EAE1FF] to-[#F3EFFF] rounded-full blur-3xl opacity-60 pointer-events-none mix-blend-multiply"></div>
-    <div class="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-gradient-to-tl from-[#EAE1FF] to-[#F3EFFF] rounded-full blur-3xl opacity-60 pointer-events-none mix-blend-multiply"></div>
+    <div
+        class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-gradient-to-br from-[#EAE1FF] to-[#F3EFFF] rounded-full blur-3xl opacity-60 pointer-events-none mix-blend-multiply fixed">
+    </div>
+    <div
+        class="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-gradient-to-tl from-[#EAE1FF] to-[#F3EFFF] rounded-full blur-3xl opacity-60 pointer-events-none mix-blend-multiply fixed">
+    </div>
 
-    <div class="w-full max-w-2xl relative z-10 fade-in">
+    <div class="w-full max-w-2xl relative z-10 fade-in my-auto">
 
         {{-- Header Section --}}
-        <div class="text-center mb-8 md:mb-10 mt-6">
-            <div class="w-20 h-20 bg-gradient-to-br from-[#C7AFFF] to-[#B28CFF] rounded-[1.5rem] flex items-center justify-center mb-6 shadow-xl shadow-[#B28CFF]/20 rotate-12 hover:rotate-0 transition-transform duration-500 mx-auto">
-                <span class="text-white font-black text-3xl drop-shadow-sm">1%</span>
-            </div>
+        <div class="text-center mb-8 md:mb-10">
             <h1 class="text-3xl font-black text-slate-800 tracking-tight mb-2">Pick your passions</h1>
-            <p class="text-slate-500 font-medium">Choose up to <span class="text-[#9261F3] font-bold">5 topics</span> (max 3 custom)</p>
+            <p class="text-slate-500 font-medium">Choose up to <span class="text-[#9261F3] font-bold">5 topics</span>
+                (max 3 custom)</p>
         </div>
 
         {{-- Main Card --}}
-        <div class="bg-white rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-[#EAE1FF] p-6 md:p-10 relative overflow-hidden">
+        <div
+            class="bg-white rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-[#EAE1FF] p-6 md:p-10 relative overflow-hidden">
             <form method="POST" action="{{ route('web.tags.save') }}" id="tagsForm">
                 @csrf
 
                 @if ($errors->any())
-                    <div class="mb-6 p-4 bg-red-50 border border-red-100 text-red-500 rounded-[1.2rem] text-sm font-bold flex items-center gap-2">
+                    <div
+                        class="mb-6 p-4 bg-red-50 border border-red-100 text-red-500 rounded-[1.2rem] text-sm font-bold flex items-center gap-2">
                         <span>⚠️</span> {{ $errors->first() }}
                     </div>
                 @endif
@@ -65,7 +70,8 @@
                 @endphp
 
                 <div class="mb-8">
-                    <label class="block text-xs font-black text-slate-400 uppercase tracking-wider mb-4 ml-1">Popular Topics</label>
+                    <label class="block text-xs font-black text-slate-400 uppercase tracking-wider mb-4 ml-1">Popular
+                        Topics</label>
                     <div class="flex flex-wrap gap-2 md:gap-3">
                         @foreach ($availableTags as $tag)
                             <button type="button" data-tag="{{ $tag }}"
@@ -81,11 +87,13 @@
 
                 <div class="mb-8">
                     <label class="block text-xs font-black text-slate-400 uppercase tracking-wider mb-4 ml-1">
-                        Add Custom Tag <span class="text-slate-300 normal-case font-semibold tracking-normal">(Optional, max 3)</span>
+                        Add Custom Tag <span class="text-slate-300 normal-case font-semibold tracking-normal">(Optional,
+                            max 3)</span>
                     </label>
                     <div class="flex flex-col sm:flex-row gap-3">
                         <div class="relative flex-1">
-                            <span class="absolute inset-y-0 left-4 flex items-center text-slate-400 text-lg pointer-events-none">✨</span>
+                            <span
+                                class="absolute inset-y-0 left-4 flex items-center text-slate-400 text-lg pointer-events-none">✨</span>
                             <input type="text" id="customTagInput" placeholder="e.g. photography, gaming..."
                                 class="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.2rem] pl-11 pr-5 py-4 text-sm font-bold text-slate-700 focus:outline-none focus:border-[#B28CFF] focus:bg-white focus:ring-4 focus:ring-[#B28CFF]/10 transition-all placeholder:text-slate-300">
                         </div>
@@ -113,7 +121,11 @@
                                transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed
                                disabled:hover:translate-y-0 disabled:hover:shadow-none flex items-center justify-center gap-2">
                         Continue
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                        </svg>
                     </button>
                 </div>
             </form>
@@ -127,7 +139,19 @@
             const customTags = []
             const MAX_TAGS = 5
             const MAX_CUSTOM = 3
-            const availableTags = @json($availableTags)
+            // Note: Pastikan $availableTags dikirim dari controller atau jadikan dummy array saat testing di html lokal
+            const availableTags = {!! json_encode(
+                $availableTags ?? [
+                    'technology',
+                    'business',
+                    'sports',
+                    'health',
+                    'finance',
+                    'education',
+                    'entertainment',
+                    'lifestyle',
+                ],
+            ) !!};
 
             // Tag button click
             document.querySelectorAll('.tag-btn').forEach(btn => {
@@ -193,7 +217,8 @@
                 // Show custom chip
                 const container = document.getElementById('customTagsContainer')
                 const chip = document.createElement('span')
-                chip.className = 'inline-flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-[#B28CFF] text-[#9261F3] rounded-[1rem] text-sm font-bold shadow-sm animate-[bounce_0.3s_ease-out_1]'
+                chip.className =
+                    'inline-flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-[#B28CFF] text-[#9261F3] rounded-[1rem] text-sm font-bold shadow-sm animate-[bounce_0.3s_ease-out_1]'
                 chip.dataset.customTag = tag
                 chip.innerHTML = `
                     <span>🎯 ${tag}</span>
@@ -264,4 +289,5 @@
         }) // end DOMContentLoaded
     </script>
 </body>
+
 </html>

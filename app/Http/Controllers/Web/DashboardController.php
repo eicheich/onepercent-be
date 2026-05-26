@@ -5,13 +5,16 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Models\Challenge;
 use App\Models\User;
+use \App\Models\UserFollow;
 use App\Models\UserDailyChallenge;
 use App\Models\UserPersonalization;
 use App\Services\AchievementService;
 use App\Services\GeminiChallengeService;
 use \App\Models\ChallengePoke;
 use Illuminate\Http\Request;
+use  \App\Models\Notification;
 use Illuminate\Support\Carbon;
+use \MongoDB\BSON\UTCDateTime;
 
 class DashboardController extends Controller
 {
@@ -19,44 +22,57 @@ class DashboardController extends Controller
     {
         $userId = session('web_user.id');
         $user   = User::find($userId);
+        $today  = now()->toDateString();
 
         // Weekly tracker
-        $last7Days = collect();
+        $last7Days = [];
         for ($i = 6; $i >= 0; $i--) {
-            $last7Days->push(now()->subDays($i)->toDateString());
+            $last7Days[] = now()->subDays($i)->toDateString();
         }
 
+        $startDate = $last7Days[0];
+        $endDate   = $last7Days[count($last7Days) - 1];
 
-        $completedDates = UserDailyChallenge::where('user_id', $userId)
+        // Ambil semua challenge dalam range
+        $challengesInRange = UserDailyChallenge::where('user_id', $userId)
             ->where('is_completed', true)
-            ->whereIn('challenge_date', $last7Days->all())
-            ->pluck('challenge_date')
-            ->map(fn($d) => is_string($d) ? $d : $d->toDateString())
-            ->all();
+            ->where('challenge_date', '>=', $startDate)
+            ->where('challenge_date', '<=', $endDate)
+            ->get();
 
-        $weeklyTracker = $last7Days->map(fn($date) => [
-            'date' => $date,
-            'day' => Carbon::parse($date)->format('D'),
-            'is_completed' => in_array($date, $completedDates),
-        ]);
+        // Convert ke date string pakai PHP
+        $completedDates = $challengesInRange->map(function ($c) {
+            $d = $c->challenge_date;
+            if ($d instanceof \Carbon\Carbon) return $d->toDateString();
+            if ($d instanceof \MongoDB\BSON\UTCDateTime) {
+                return \Carbon\Carbon::createFromTimestamp(
+                    $d->toDateTime()->getTimestamp()
+                )->toDateString();
+            }
+            return (string) $d;
+        })->filter()->values()->all();
+
+        $weeklyTracker = array_map(fn($date) => [
+            'date'         => $date,
+            'day'          => \Carbon\Carbon::parse($date)->format('D'),
+            'is_completed' => in_array($date, $completedDates, true),
+        ], $last7Days);
 
         // Today challenge
         $todayChallenge = UserDailyChallenge::with('challenge')
             ->where('user_id', $userId)
-            ->where('challenge_date', now()->toDateString())
+            ->where('challenge_date', $today)
             ->first();
 
         // Top leaderboard
         $leaderboard = User::orderBy('current_streak', 'desc')
-            ->limit(5)
+            ->limit(10)
             ->get();
 
-        // tandai user login (tanpa mengubah jadi array)
         $leaderboard->each(function ($u) use ($userId) {
             $u->is_me = (string) $u->getKey() === $userId;
         });
 
-        // Stats
         $totalCompleted = UserDailyChallenge::where('user_id', $userId)
             ->where('is_completed', true)->count();
 
@@ -72,10 +88,12 @@ class DashboardController extends Controller
     public function challenge()
     {
         $userId = session('web_user.id');
+        $today  = now()->toDateString();
 
+        // Pakai string comparison, bukan date cast
         $todayChallenge = UserDailyChallenge::with('challenge')
             ->where('user_id', $userId)
-            ->where('challenge_date', now()->toDateString())
+            ->where('challenge_date', $today)
             ->first();
 
         $history = UserDailyChallenge::with('challenge')
@@ -84,13 +102,15 @@ class DashboardController extends Controller
             ->limit(14)
             ->get();
 
-        // Weekly progress
+        // Weekly progress — pakai gte/lte bukan whereBetween
+        $weekStart = now()->startOfWeek()->toDateString();
+        $weekEnd   = now()->endOfWeek()->toDateString();
+
         $weekCompleted = UserDailyChallenge::where('user_id', $userId)
             ->where('is_completed', true)
-            ->whereBetween('challenge_date', [
-                now()->startOfWeek()->toDateString(),
-                now()->endOfWeek()->toDateString(),
-            ])->count();
+            ->where('challenge_date', '>=', $weekStart)
+            ->where('challenge_date', '<=', $weekEnd)
+            ->count();
 
         return view('web.challenge', compact(
             'todayChallenge',
@@ -206,7 +226,7 @@ class DashboardController extends Controller
         $unreadCount = $notifications->whereNull('read_at')->count();
 
         // Auto mark as read
-        ChallengePoke::where('receiver_id', $userId)
+        Notification::where('receiver_id', $userId)
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
@@ -259,5 +279,69 @@ class DashboardController extends Controller
         } catch (\Throwable $e) {
             return back()->withErrors(['error' => 'AI scoring failed: ' . $e->getMessage()]);
         }
+    }
+    public function pokeFriend(string $userId)
+    {
+        $myId = session('web_user.id');
+
+        // Validasi target user ada
+        $targetUser = User::find($userId);
+        if (!$targetUser) {
+            return back()->with('errorpoke', 'User not found!');
+        }
+
+        // Cek tidak bisa poke diri sendiri
+        if ($myId === $userId) {
+            return back()->with('errorpoke', 'You cannot poke yourself!');
+        }
+
+        // Cek apakah sudah complete challenge hari ini
+        $challenge = UserDailyChallenge::where('user_id', $myId)
+            ->where('challenge_date', now()->toDateString())
+            ->where('is_completed', true)
+            ->first();
+
+        if (!$challenge) {
+            return back()->with('errorpoke', 'Complete today\'s challenge first before poking!');
+        }
+
+        // Cek mutual follow
+        $iFollowThem = UserFollow::where('follower_id', $myId)
+            ->where('following_id', $userId)->exists();
+        $theyFollowMe = UserFollow::where('follower_id', $userId)
+            ->where('following_id', $myId)->exists();
+
+        if (!$iFollowThem || !$theyFollowMe) {
+            return back()->with('errorpoke', 'You must follow each other (mutual) to poke!');
+        }
+
+        // Cek sudah poke hari ini
+        $alreadyPoked = ChallengePoke::where('sender_id', $myId)
+            ->where('receiver_id', $userId)
+            ->whereDate('created_at', now()->toDateString())
+            ->exists();
+
+        if ($alreadyPoked) {
+            return back()->with('errorpoke', 'You already poked ' . $targetUser->name . ' today!');
+        }
+
+        ChallengePoke::create([
+            'sender_id' => $myId,
+            'receiver_id' => $userId,
+            'user_daily_challenge_id' => (string) $challenge->getKey(),
+            'challenge_id' => (string) ($challenge->challenge_id ?? ''),
+            'type' => 'boast',
+            'message' => 'I finished today\'s challenge! 💪 Come on!',
+            'metadata' => [
+                'challenge_title' => $challenge->challenge?->title ?? 'Challenge',
+                'challenge_date' => now()->toDateString(),
+                'completed_at' => $challenge->completed_at?->toIso8601String(),
+            ],
+            'read_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return back()->with('successpoke', '👋 Poked ' . $targetUser->name . ' successfully!');
     }
 }

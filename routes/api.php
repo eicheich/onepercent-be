@@ -13,6 +13,7 @@ use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\StreakController;
 use App\Http\Controllers\AchievementController;
+use App\Http\Controllers\NotificationController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -56,6 +57,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/pokes/inbox', [ChallengePokeController::class, 'inbox']);
         Route::post('/pokes/{pokeId}/read', [ChallengePokeController::class, 'markAsRead']);
         Route::get('/test-ai', [DailyChallengeController::class, 'testAi']);
+        Route::post('/daily/regenerate', [DailyChallengeController::class, 'regenerate']);
         Route::post(
             '/pokes/read-all',
             [ChallengePokeController::class, 'markAllAsRead']
@@ -71,5 +73,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('achievements')->group(function () {
         Route::get('/', [AchievementController::class, 'index']);
         Route::post('/check', [AchievementController::class, 'check']);
+    });
+    Route::prefix('notifications')->group(function () {
+        Route::get('/',              [NotificationController::class, 'index']);
+        Route::post('/read-all',     [NotificationController::class, 'markAllRead']);
+        Route::post('/{id}/read',    [NotificationController::class, 'markRead']);
+        Route::get('/unread-count',  [NotificationController::class, 'unreadCount']);
     });
 });

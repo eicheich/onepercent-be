@@ -74,7 +74,7 @@ class FriendsWebController extends Controller
             ]);
         }
 
-        return back()->with('success', 'Followed successfully!');
+        return back()->with('successfol', 'Followed successfully!');
     }
 
     public function unfollow(string $id)
@@ -83,6 +83,6 @@ class FriendsWebController extends Controller
         UserFollow::where('follower_id', $userId)
             ->where('following_id', $id)->delete();
 
-        return back()->with('success', 'Unfollowed.');
+        return back()->with('successfol', 'Unfollowed.');
     }
 }

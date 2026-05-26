@@ -15,7 +15,7 @@
                     <p class="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">Current Streak</p>
                     <p class="text-3xl font-black text-slate-800 flex items-center gap-1">
                         {{ $user->current_streak ?? 0 }}
-                        <span class="text-xl mt-1"><img src="/img/Streak.png" alt="  STREAKKK"></span>
+                        <span class="text-xl mt-1"><img class="w-7 h-7" src="/img/Streak.png" alt="  STREAKKK"></span>
                     </p>
                 </div>
                 <div
@@ -79,7 +79,7 @@
                                                 : 'bg-slate-50 text-slate-300 border border-slate-100')) }}">
                                     <span class="text-xl md:text-2xl mb-1 drop-shadow-sm">
                                         @if ($isCompleted)
-                                            <img src="/img/Streak.png" alt="STREAK">
+                                            <img class="w-7 h-7" src="/img/Streak.png" alt="STREAK">
                                         @elseif ($isPast)
                                             <img src="/img/ic_day_missed.png" alt="missed day">
                                         @elseif ($isToday)
@@ -190,7 +190,7 @@
                     <div class="absolute bottom-10 -left-10 text-6xl opacity-10 rotate-12">👑</div>
 
                     <h3 class="font-black text-2xl mb-6 flex items-center gap-2 relative z-10 tracking-tight">
-                        Top Players
+                        Top 10 Players
                     </h3>
 
                     <div class="space-y-3 relative z-10 flex-1">
@@ -201,11 +201,11 @@
                                 {{-- Rank / Mahkota --}}
                                 <div class="w-8 text-center font-black flex justify-center">
                                     @if ($i == 0)
-                                        <span class="text-2xl drop-shadow-md">🥇</span>
+                                        <span class="text-2xl drop-shadow-md"><img src="/img/1st.png" alt="1st"></span>
                                     @elseif($i == 1)
-                                        <span class="text-2xl drop-shadow-md">🥈</span>
+                                        <span class="text-2xl drop-shadow-md"><img src="/img/2nd.png" alt="2nd"></span>
                                     @elseif($i == 2)
-                                        <span class="text-2xl drop-shadow-md">🥉</span>
+                                        <span class="text-2xl drop-shadow-md"><img src="/img/3rd.png" alt="3rd"></span>
                                     @else
                                         <span class="text-white/80 text-lg">{{ $i + 1 }}</span>
                                     @endif
@@ -222,7 +222,7 @@
 
                                 <div
                                     class="flex items-center gap-1.5 bg-white/30 px-3 py-1.5 rounded-full backdrop-blur-sm border border-white/20">
-                                    <span class="text-xs"><img src="/img/Streak.png" alt="  STREAKKK"></span>
+                                    <span class="text-xs"><img class="w-7 h-7" src="/img/Streak.png" alt="  STREAKKK"></span>
                                     <span class="text-sm font-black drop-shadow-sm">{{ $u->current_streak ?? 0 }}</span>
                                 </div>
                             </div>

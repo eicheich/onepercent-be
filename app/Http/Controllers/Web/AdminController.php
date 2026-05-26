@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Models\UserDailyChallenge;
 use App\Models\UserFollow;
 use Illuminate\Http\Request;
+use \App\Models\UserAchievement;
+use \App\Services\AchievementService;
 
 class AdminController extends Controller
 {
@@ -24,7 +26,6 @@ class AdminController extends Controller
         ];
 
         $recentUsers = User::orderBy('created_at', 'desc')->limit(5)->get();
-
         $topUsers = User::orderBy('current_streak', 'desc')->limit(10)->get();
 
         $dailyActivity = collect();
@@ -39,7 +40,10 @@ class AdminController extends Controller
         }
 
         return view('web.admin.dashboard', compact(
-            'stats', 'recentUsers', 'topUsers', 'dailyActivity'
+            'stats',
+            'recentUsers',
+            'topUsers',
+            'dailyActivity'
         ));
     }
 
@@ -51,7 +55,7 @@ class AdminController extends Controller
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%");
             });
         }
 
@@ -80,5 +84,44 @@ class AdminController extends Controller
             $user->delete();
         }
         return back()->with('success', 'User deleted!');
+    }
+    public function userDetail(string $id)
+    {
+        $user = User::find($id);
+        if (!$user) return abort(404);
+
+        $challenges =  UserDailyChallenge::with('challenge')
+            ->where('user_id', $id)
+            ->orderBy('challenge_date', 'desc')
+            ->limit(14)->get();
+
+        $achievements = UserAchievement::where('user_id', $id)->get();
+
+        $followersCount = UserFollow::where('following_id', $id)->count();
+        $followingCount = UserFollow::where('follower_id', $id)->count();
+
+        return view(
+            'web.admin.user-detail',
+            compact('user', 'challenges', 'achievements', 'followersCount', 'followingCount')
+        );
+    }
+
+    public function achievements()
+    {
+        $allAchievements = UserAchievement::all();
+
+        $stats = collect(AchievementService::ACHIEVEMENTS)
+            ->map(fn($data, $key) => [
+                'key' => $key,
+                'name' => $data['name'],
+                'icon' => $data['icon'],
+                'image' => $data['image'],
+                'description' => $data['description'],
+                'count' => $allAchievements->where('achievement_key', $key)->count(),
+            ])->values();
+
+        $totalUnlocked = $allAchievements->count();
+
+        return view('web.admin.achievements', compact('stats', 'totalUnlocked'));
     }
 }

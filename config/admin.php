@@ -1,7 +1,6 @@
 <?php
 return [
     'emails' => [
-        env('ADMIN_EMAIL', 'admin@onepercent.app'),
-        'admin@gmail.com',
+        'finndr2005@gmail.com',
     ],
 ];

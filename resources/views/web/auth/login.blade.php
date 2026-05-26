@@ -26,8 +26,8 @@
 
         {{-- Logo --}}
         <div class="text-center mb-8">
-            <div class="w-16 h-16 rounded-3xl bg-primary mx-auto flex items-center justify-center mb-4">
-                <span class="text-white font-bold text-2xl">1%</span>
+            <div class="w-16 h-16 rounded-3xl  mx-auto flex items-center justify-center mb-4">
+                <span class="text-white font-bold text-2xl"><img src="/img/onboard1.png" alt=""></span>
             </div>
             <h1 class="text-2xl font-bold text-gray-800">Welcome back!</h1>
             <p class="text-gray-400 mt-1">Sign in to continue</p>

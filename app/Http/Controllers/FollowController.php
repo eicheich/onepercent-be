@@ -6,57 +6,55 @@ use App\Models\User;
 use App\Models\UserFollow;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Services\NotificationService;
 
 class FollowController extends Controller
 {
+
+
     public function follow(Request $request, string $userId): JsonResponse
     {
         $authId = (string) $request->user()->getKey();
-        $targetUserId = trim($userId);
 
-        if ($targetUserId === '' || $targetUserId === $authId) {
+        if ($authId === $userId) {
             return response()->json([
-                'status' => 'error',
-                'message' => 'You cannot follow this user.',
+                'status'  => 'error',
+                'message' => 'Cannot follow yourself.',
             ], 422);
         }
 
-        $target = User::query()->find($targetUserId);
-
-        if ($target === null) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'User not found.',
-            ], 404);
-        }
-
-        $alreadyFollowing = UserFollow::query()
-            ->where('follower_id', $authId)
-            ->where('following_id', $targetUserId)
+        $exists = UserFollow::where('follower_id', $authId)
+            ->where('following_id', $userId)
             ->exists();
 
-        if ($alreadyFollowing) {
+        if ($exists) {
             return response()->json([
-                'status' => 'success',
-                'message' => 'Already following this user.',
-                'data' => [
-                    'following_user_id' => $targetUserId,
-                ],
+                'status'  => 'success',
+                'message' => 'Already following.',
             ]);
         }
 
-        UserFollow::query()->create([
-            'follower_id' => $authId,
-            'following_id' => $targetUserId,
+        UserFollow::create([
+            'follower_id'  => $authId,
+            'following_id' => $userId,
         ]);
 
+        // Notif ke target
+        NotificationService::notifyFollow($authId, $userId);
+
+        // Cek apakah mutual → notif follow back
+        $theyFollowMe = UserFollow::where('follower_id', $userId)
+            ->where('following_id', $authId)
+            ->exists();
+
+        if ($theyFollowMe) {
+            NotificationService::notifyFollowBack($authId, $userId);
+        }
+
         return response()->json([
-            'status' => 'success',
-            'message' => 'User followed successfully.',
-            'data' => [
-                'following_user_id' => $targetUserId,
-            ],
-        ], 201);
+            'status'  => 'success',
+            'message' => 'Followed successfully.',
+        ]);
     }
 
     public function unfollow(Request $request, string $userId): JsonResponse

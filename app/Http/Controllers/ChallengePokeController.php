@@ -15,94 +15,94 @@ class ChallengePokeController extends Controller
     {
         $validated = $request->validate([
             'user_daily_challenge_id' => ['required', 'string', 'max:120'],
-            'type' => ['nullable', 'string', 'in:boast,remind'],
+            'type'    => ['nullable', 'string', 'in:boast,remind'],
             'message' => ['nullable', 'string', 'max:220'],
         ]);
 
-        $senderId = (string) $request->user()->getKey();
+        $senderId   = (string) $request->user()->getKey();
         $receiverId = trim($userId);
 
         if ($receiverId === '' || $receiverId === $senderId) {
             return response()->json([
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => 'You cannot poke this user.',
             ], 422);
         }
 
-        $receiver = User::query()->find($receiverId);
-
+        $receiver = User::find($receiverId);
         if ($receiver === null) {
             return response()->json([
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => 'Target user not found.',
             ], 404);
         }
 
-        $isSenderFollowingReceiver = UserFollow::query()
-            ->where('follower_id', $senderId)
-            ->where('following_id', $receiverId)
-            ->exists();
+        $isSenderFollowingReceiver = UserFollow::where('follower_id', $senderId)
+            ->where('following_id', $receiverId)->exists();
+        $isReceiverFollowingSender = UserFollow::where('follower_id', $receiverId)
+            ->where('following_id', $senderId)->exists();
 
-        $isReceiverFollowingSender = UserFollow::query()
-            ->where('follower_id', $receiverId)
-            ->where('following_id', $senderId)
-            ->exists();
-
-        if (! $isSenderFollowingReceiver || ! $isReceiverFollowingSender) {
+        if (!$isSenderFollowingReceiver || !$isReceiverFollowingSender) {
             return response()->json([
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => 'Poke is only available for mutual followers.',
             ], 403);
         }
 
-        $assignment = UserDailyChallenge::query()
-            ->with('challenge')
+        $assignment = UserDailyChallenge::with('challenge')
             ->where('_id', (string) $validated['user_daily_challenge_id'])
             ->where('user_id', $senderId)
             ->first();
 
         if ($assignment === null) {
             return response()->json([
-                'status' => 'error',
-                'message' => 'Completed challenge assignment not found.',
+                'status'  => 'error',
+                'message' => 'Challenge assignment not found.',
             ], 404);
         }
 
-        if (! (bool) $assignment->is_completed) {
+        if (!(bool) $assignment->is_completed) {
             return response()->json([
-                'status' => 'error',
-                'message' => 'You can only poke friends after completing the challenge.',
+                'status'  => 'error',
+                'message' => 'Complete the challenge first before poking.',
             ], 422);
         }
 
-        $type = (string) ($validated['type'] ?? 'boast');
-        $message = isset($validated['message']) ? trim((string) $validated['message']) : null;
+        $type    = (string) ($validated['type'] ?? 'boast');
+        $message = isset($validated['message'])
+            ? trim((string) $validated['message']) : null;
+        if ($message === '') $message = null;
 
-        if ($message === '') {
-            $message = null;
-        }
-
-        $poke = ChallengePoke::query()->create([
-            'sender_id' => $senderId,
-            'receiver_id' => $receiverId,
+        $poke = ChallengePoke::create([
+            'sender_id'               => $senderId,
+            'receiver_id'             => $receiverId,
             'user_daily_challenge_id' => (string) $assignment->getKey(),
-            'challenge_id' => (string) ($assignment->challenge_id ?? ''),
-            'type' => $type,
-            'message' => $message,
-            'metadata' => [
+            'challenge_id'            => (string) ($assignment->challenge_id ?? ''),
+            'type'                    => $type,
+            'message'                 => $message,
+            'metadata'                => [
                 'challenge_title' => $assignment->challenge?->title,
-                'challenge_date' => $assignment->challenge_date?->toDateString(),
-                'completed_at' => $assignment->completed_at?->toIso8601String(),
+                'challenge_date'  => is_string($assignment->challenge_date)
+                    ? $assignment->challenge_date
+                    : $assignment->challenge_date?->toDateString(),
+                'completed_at'    => $assignment->completed_at?->toIso8601String(),
             ],
         ]);
 
+        // Fix: pakai $senderId dan $receiverId, bukan $authId/$userId
+        \App\Services\NotificationService::notifyPoke(
+            $senderId,
+            $receiverId,
+            $assignment->challenge?->title ?? 'Daily Challenge'
+        );
+
         return response()->json([
-            'status' => 'success',
+            'status'  => 'success',
             'message' => 'Poke sent successfully.',
-            'data' => [
-                'id' => (string) $poke->getKey(),
-                'to_user_id' => $receiverId,
-                'type' => $poke->type,
+            'data'    => [
+                'id'          => (string) $poke->getKey(),
+                'to_user_id'  => $receiverId,
+                'type'        => $poke->type,
             ],
         ], 201);
     }

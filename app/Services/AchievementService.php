@@ -13,42 +13,50 @@ class AchievementService
         'first_step' => [
             'name'        => 'First Step',
             'description' => 'Complete your first challenge',
-            'icon'        => '🏆',
+            'icon' => '🏆',
+            'image' => 'ic_achievement_1'
         ],
         'on_fire' => [
             'name'        => 'On Fire',
             'description' => '7-day streak',
             'icon'        => '🔥',
+            'image' => 'ic_achievement_2'
         ],
         'unstoppable' => [
             'name'        => 'Unstoppable',
             'description' => '30-day streak',
             'icon'        => '⚡',
+            'image' => 'ic_achievement_3'
         ],
         'champion' => [
             'name'        => 'Champion',
             'description' => 'Reach top 10 leaderboard',
             'icon'        => '👑',
+            'image' => 'ic_achievement_4'
         ],
         'social_butterfly' => [
             'name'        => 'Social Butterfly',
             'description' => 'Follow 5 people',
             'icon'        => '🤝',
+            'image' => 'ic_achievement_5'
         ],
         'proof_master' => [
             'name'        => 'Proof Master',
             'description' => 'Upload your first proof',
             'icon'        => '📤',
+            'image'     => 'ic_achievement_6'
         ],
         'consistent' => [
             'name'        => 'Consistent',
             'description' => 'Complete 10 total challenges',
             'icon'        => '💪',
+            'image' => 'ic_achievement_7'
         ],
         'all_star' => [
             'name'        => 'All Star',
             'description' => 'Complete all 7 days in a week',
             'icon'        => '🌟',
+            'image' => 'ic_achievement_8'
         ],
     ];
 
@@ -153,10 +161,10 @@ class AchievementService
         $weekStart = now()->startOfWeek()->toDateString();
         $weekEnd   = now()->endOfWeek()->toDateString();
 
-        $completedThisWeek = UserDailyChallenge::query()
-            ->where('user_id', $userId)
+        $completedThisWeek = UserDailyChallenge::where('user_id', $userId)
             ->where('is_completed', true)
-            ->whereBetween('challenge_date', [$weekStart, $weekEnd])
+            ->where('challenge_date', '>=', $weekStart)
+            ->where('challenge_date', '<=', $weekEnd)
             ->count();
 
         return $completedThisWeek >= 7;
@@ -178,6 +186,7 @@ class AchievementService
                 'name'         => $data['name'],
                 'description'  => $data['description'],
                 'icon'         => $data['icon'],
+                'image'       => $data['image'],
                 'is_unlocked'  => $isUnlocked,
                 'unlocked_at'  => $isUnlocked
                     ? $unlocked[$key]->unlocked_at?->toIso8601String()

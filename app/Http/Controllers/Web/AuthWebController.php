@@ -25,25 +25,42 @@ class AuthWebController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return back()->withErrors(['email' => 'Invalid credentials.']);
+        if (!$user || !Hash::check(
+            $request->password,
+            $user->password
+        )) {
+            return back()->withErrors(['email' => 'Invalid email or password.'])
+                ->withInput();
         }
 
-        $token = $user->createToken('web-token')->plainTextToken;
+        $token    = $user->createToken('web-token')->plainTextToken;
+        $isAdmin  = in_array($user->email, config('admin.emails', []));
 
         session([
-            'web_token' => $token,
+            'web_token'  => $token,
             'web_user' => [
                 'id' => (string) $user->getKey(),
                 'name' => $user->name,
                 'email' => $user->email,
                 'avatar' => $user->avatar,
             ],
-            'is_admin' => in_array($user->email, config('admin.emails', [])),
+            'web_streak' => $user->current_streak ?? 0,
+            'is_admin' => $isAdmin,
         ]);
 
-        if (session('is_admin')) {
+        // Admin → admin dashboard
+        if ($isAdmin) {
             return redirect()->route('admin.dashboard');
+        }
+
+        // Cek tags
+        $hasTags = \App\Models\UserPersonalization::where(
+            'user_id',
+            (string) $user->getKey()
+        )->exists();
+
+        if (!$hasTags) {
+            return redirect()->route('web.tags');
         }
 
         return redirect()->route('web.dashboard');

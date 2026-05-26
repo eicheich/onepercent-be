@@ -16,97 +16,85 @@ class DummyDataSeeder extends Seeder
 {
     public function run(): void
     {
-        $this->command->info('Clearing old data...');
-        $this->clearData();
+        $this->command->info('🗑️  Clearing all collections...');
+        $this->clearAll();
 
-        $this->command->info('Seeding users...');
-        $finn   = $this->seedFinn();
-        $dummies = $this->seedDummyUsers();
+        $this->command->info('👤 Creating finn dr (admin)...');
+        $finn = $this->createFinn();
 
-        $this->command->info('Seeding personalizations...');
-        $this->seedPersonalizations($finn, $dummies);
+        $this->command->info('👥 Creating dummy users...');
+        $dummies = $this->createDummyUsers();
 
-        $this->command->info('Seeding challenges...');
-        $challenges = $this->seedChallenges();
+        $this->command->info('🏷️  Setting up personalizations...');
+        $this->createPersonalizations($finn, $dummies);
 
-        $this->command->info('Seeding daily challenges...');
-        $this->seedDailyChallenges($finn, $dummies, $challenges);
+        $this->command->info('🎯 Creating challenge pool...');
+        $challenges = $this->createChallenges();
 
-        $this->command->info('Seeding follows...');
-        $this->seedFollows($finn, $dummies);
+        $this->command->info('📅 Creating daily challenge history...');
+        $this->createDailyChallenges($finn, $dummies, $challenges);
 
-        $this->command->info('Seeding pokes...');
-        $this->seedPokes($finn, $dummies, $challenges);
+        $this->command->info('🤝 Creating follow relationships...');
+        $this->createFollows($finn, $dummies);
 
-        $this->command->info('Seeding achievements...');
-        $this->seedAchievements($finn);
+        $this->command->info('👋 Creating poke notifications...');
+        $this->createPokes($finn, $dummies, $challenges);
 
-        $this->command->info('Done! ✅');
+        $this->command->info('🏆 Creating achievements...');
+        $this->createAchievements($finn);
+
+        $this->command->info('✅ Done! Summary:');
         $this->command->table(
             ['Collection', 'Count'],
             [
-                ['users',               User::count()],
-                ['personalizations',    UserPersonalization::count()],
-                ['challenges',          Challenge::count()],
-                ['daily_challenges',    UserDailyChallenge::count()],
-                ['follows',             UserFollow::count()],
-                ['pokes',               ChallengePoke::count()],
-                ['achievements',        UserAchievement::count()],
+                ['users',            User::count()],
+                ['personalizations', UserPersonalization::count()],
+                ['challenges',       Challenge::count()],
+                ['daily_challenges', UserDailyChallenge::count()],
+                ['follows',          UserFollow::count()],
+                ['pokes',            ChallengePoke::count()],
+                ['achievements',     UserAchievement::count()],
             ]
         );
+
+        $this->command->info('');
+        $this->command->info('🔑 Admin access: finndr2005@gmail.com / password123');
+        $this->command->info('🌐 Admin URL: http://127.0.0.1:8000/admin');
+        $this->command->info('📱 App URL:   http://127.0.0.1:8000/app/dashboard');
     }
 
-    private function clearData(): void
+    private function clearAll(): void
     {
-        // Hapus semua kecuali finn dr
-        $finnEmail = 'finndr2005@gmail.com';
-        $finn = User::where('email', $finnEmail)->first();
-
-        User::where('email', '!=', $finnEmail)->delete();
-        if ($finn) {
-            UserPersonalization::where('user_id', (string) $finn->getKey())->delete();
-            UserDailyChallenge::where('user_id', (string) $finn->getKey())->delete();
-            UserAchievement::where('user_id', (string) $finn->getKey())->delete();
-        }
-        UserPersonalization::where('user_id', '!=', $finn ? (string) $finn->getKey() : '')->delete();
-        UserDailyChallenge::where('user_id', '!=', $finn ? (string) $finn->getKey() : '')->delete();
+        User::truncate();
+        UserPersonalization::truncate();
+        Challenge::truncate();
+        UserDailyChallenge::truncate();
         UserFollow::truncate();
         ChallengePoke::truncate();
-        Challenge::truncate();
         UserAchievement::truncate();
+
+        // Hapus tokens juga
+        \App\Models\PersonalAccessToken::truncate();
     }
 
-    private function seedFinn(): User
+    private function createFinn(): User
     {
-        $finn = User::where('email', 'finndr2005@gmail.com')->first();
-
-        if ($finn === null) {
-            $finn = User::create([
-                'name'               => 'finn dr',
-                'email'              => 'finndr2005@gmail.com',
-                'password'           => Hash::make('password123'),
-                'google_id'          => '103571788657597080460',
-                'avatar'             => 'https://lh3.googleusercontent.com/a/ACg8ocK5sZvXImDd-53diVs10iN_3YPJmCkK-zLp3xrHk5m4rPbW-g=s96-c',
-                'current_streak'     => 6,
-                'longest_streak'     => 10,
-                'last_completed_date'=> now()->toDateString(),
-                'gender'             => 'male',
-            ]);
-        } else {
-            $finn->current_streak      = 6;
-            $finn->longest_streak      = 10;
-            $finn->last_completed_date = now()->toDateString();
-            $finn->avatar = 'https://lh3.googleusercontent.com/a/ACg8ocK5sZvXImDd-53diVs10iN_3YPJmCkK-zLp3xrHk5m4rPbW-g=s96-c';
-            $finn->save();
-        }
-
-        $this->command->info('Finn ID: ' . $finn->getKey());
-        return $finn;
+        return User::create([
+            'name'                => 'finn dr',
+            'email'               => 'finndr2005@gmail.com',
+            'password'            => Hash::make('password123'),
+            'google_id'           => '103571788657597080460',
+            'avatar'              => 'https://lh3.googleusercontent.com/a/ACg8ocK5sZvXImDd-53diVs10iN_3YPJmCkK-zLp3xrHk5m4rPbW-g=s96-c',
+            'current_streak'      => 6,
+            'longest_streak'      => 10,
+            'last_completed_date' => now()->toDateString(),
+            'gender'              => 'male',
+        ]);
     }
 
-    private function seedDummyUsers(): array
+    private function createDummyUsers(): array
     {
-        $usersData = [
+        $data = [
             ['name' => 'Aria Putri',    'email' => 'aria@test.com',    'streak' => 42, 'gender' => 'female'],
             ['name' => 'Budi Santoso',  'email' => 'budi@test.com',    'streak' => 38, 'gender' => 'male'],
             ['name' => 'Citra Dewi',    'email' => 'citra@test.com',   'streak' => 31, 'gender' => 'female'],
@@ -117,24 +105,22 @@ class DummyDataSeeder extends Seeder
         ];
 
         $users = [];
-        foreach ($usersData as $data) {
-            $user = User::create([
-                'name'               => $data['name'],
-                'email'              => $data['email'],
-                'password'           => Hash::make('password123'),
-                'current_streak'     => $data['streak'],
-                'longest_streak'     => $data['streak'] + 5,
-                'last_completed_date'=> now()->toDateString(),
-                'gender'             => $data['gender'],
-                'avatar'             => null,
+        foreach ($data as $d) {
+            $users[] = User::create([
+                'name'                => $d['name'],
+                'email'               => $d['email'],
+                'password'            => Hash::make('password123'),
+                'current_streak'      => $d['streak'],
+                'longest_streak'      => $d['streak'] + 5,
+                'last_completed_date' => now()->toDateString(),
+                'gender'              => $d['gender'],
+                'avatar'              => null,
             ]);
-            $users[] = $user;
         }
-
         return $users;
     }
 
-    private function seedPersonalizations(User $finn, array $dummies): void
+    private function createPersonalizations(User $finn, array $dummies): void
     {
         UserPersonalization::create([
             'user_id' => (string) $finn->getKey(),
@@ -159,9 +145,9 @@ class DummyDataSeeder extends Seeder
         }
     }
 
-    private function seedChallenges(): array
+    private function createChallenges(): array
     {
-        $challengesData = [
+        $data = [
             [
                 'title'             => 'Design a Simple UI Layout',
                 'content'           => 'Create a mobile app wireframe with at least 3 screens. Focus on clean layout and user flow.',
@@ -214,24 +200,23 @@ class DummyDataSeeder extends Seeder
         ];
 
         $challenges = [];
-        foreach ($challengesData as $data) {
+        foreach ($data as $d) {
             $challenges[] = Challenge::create([
-                ...$data,
+                ...$d,
                 'metadata' => ['provider' => 'seeder'],
             ]);
         }
-
         return $challenges;
     }
 
-    private function seedDailyChallenges(
+    private function createDailyChallenges(
         User $finn,
         array $dummies,
         array $challenges
     ): void {
-        $today = now();
+        $count = count($challenges);
 
-        // Finn — 6 hari completed, 1 missed (hari ke-3), hari ini belum
+        // Finn: 6 hari completed, 1 missed (hari ke-3), hari ini BELUM complete
         for ($d = 6; $d >= 0; $d--) {
             $date      = now()->subDays($d);
             $isMissed  = ($d === 3);
@@ -240,14 +225,14 @@ class DummyDataSeeder extends Seeder
 
             UserDailyChallenge::create([
                 'user_id'        => (string) $finn->getKey(),
-                'challenge_id'   => (string) $challenges[$d % count($challenges)]->getKey(),
+                'challenge_id'   => (string) $challenges[$d % $count]->getKey(),
                 'challenge_date' => $date->toDateString(),
                 'is_completed'   => $completed,
-                'completed_at'   => $completed ? $date : null,
+                'completed_at'   => $completed ? $date->copy()->addHours(9) : null,
                 'expires_at'     => $date->copy()->addDay(),
                 'metadata'       => [
                     'provider'   => 'seeder',
-                    'reflection' => $completed ? 'Great session!' : null,
+                    'reflection' => $completed ? 'Great progress today!' : null,
                 ],
             ]);
         }
@@ -256,14 +241,16 @@ class DummyDataSeeder extends Seeder
         foreach ($dummies as $u => $user) {
             for ($d = 6; $d >= 0; $d--) {
                 $date      = now()->subDays($d);
-                $completed = $u < 4 ? $d > 0 : ($d % 2 === 0 && $d > 0);
+                $completed = $u < 4
+                    ? $d > 0   // top 4 users complete semua kecuali hari ini
+                    : ($d % 2 === 0 && $d > 0); // sisanya selang-seling
 
                 UserDailyChallenge::create([
                     'user_id'        => (string) $user->getKey(),
-                    'challenge_id'   => (string) $challenges[($u + $d) % count($challenges)]->getKey(),
+                    'challenge_id'   => (string) $challenges[($u + $d) % $count]->getKey(),
                     'challenge_date' => $date->toDateString(),
                     'is_completed'   => $completed,
-                    'completed_at'   => $completed ? $date : null,
+                    'completed_at'   => $completed ? $date->copy()->addHours(8) : null,
                     'expires_at'     => $date->copy()->addDay(),
                     'metadata'       => ['provider' => 'seeder'],
                 ]);
@@ -271,109 +258,97 @@ class DummyDataSeeder extends Seeder
         }
     }
 
-    private function seedFollows(User $finn, array $dummies): void
+    private function createFollows(User $finn, array $dummies): void
     {
+        $finnId = (string) $finn->getKey();
+
         // Finn mutual follow dengan semua dummy
         foreach ($dummies as $dummy) {
-            UserFollow::create([
-                'follower_id'  => (string) $finn->getKey(),
-                'following_id' => (string) $dummy->getKey(),
-            ]);
-            UserFollow::create([
-                'follower_id'  => (string) $dummy->getKey(),
-                'following_id' => (string) $finn->getKey(),
-            ]);
+            $dummyId = (string) $dummy->getKey();
+            UserFollow::create(['follower_id' => $finnId,   'following_id' => $dummyId]);
+            UserFollow::create(['follower_id' => $dummyId,  'following_id' => $finnId]);
         }
 
         // Beberapa dummy saling follow
-        for ($i = 0; $i < 3; $i++) {
-            UserFollow::create([
-                'follower_id'  => (string) $dummies[$i]->getKey(),
-                'following_id' => (string) $dummies[$i + 1]->getKey(),
-            ]);
-            UserFollow::create([
-                'follower_id'  => (string) $dummies[$i + 1]->getKey(),
-                'following_id' => (string) $dummies[$i]->getKey(),
-            ]);
+        for ($i = 0; $i < min(3, count($dummies) - 1); $i++) {
+            $a = (string) $dummies[$i]->getKey();
+            $b = (string) $dummies[$i + 1]->getKey();
+            UserFollow::create(['follower_id' => $a, 'following_id' => $b]);
+            UserFollow::create(['follower_id' => $b, 'following_id' => $a]);
         }
     }
 
-    private function seedPokes(
+    private function createPokes(
         User $finn,
         array $dummies,
         array $challenges
     ): void {
         $finnId = (string) $finn->getKey();
 
-        $pokesData = [
+        $pokesConfig = [
             [
-                'sender'    => $dummies[0],
-                'type'      => 'boast',
-                'message'   => 'Just finished my challenge! 💪 Your turn!',
-                'title'     => 'Design a Simple UI Layout',
-                'challenge' => $challenges[0],
-                'date'      => now()->toDateString(),
-                'ago'       => 5,  // minutes ago
+                'sender'  => $dummies[0],
+                'type'    => 'boast',
+                'message' => 'Just finished my challenge! 💪 Your turn!',
+                'title'   => 'Design a Simple UI Layout',
+                'c_idx'   => 0,
+                'mins_ago' => 5,
             ],
             [
-                'sender'    => $dummies[1],
-                'type'      => 'remind',
-                'message'   => "Hey don't forget your challenge today! 👀",
-                'title'     => 'Learn One New Tech Concept',
-                'challenge' => $challenges[1],
-                'date'      => now()->toDateString(),
-                'ago'       => 15,
+                'sender'  => $dummies[1],
+                'type'    => 'remind',
+                'message' => "Hey don't forget your challenge today! 👀",
+                'title'   => 'Learn One New Tech Concept',
+                'c_idx'   => 1,
+                'mins_ago' => 30,
             ],
             [
-                'sender'    => $dummies[2],
-                'type'      => 'boast',
-                'message'   => 'I completed a 7-day streak! 🔥',
-                'title'     => '10-Minute Morning Stretch',
-                'challenge' => $challenges[2],
-                'date'      => now()->subDay()->toDateString(),
-                'ago'       => 60 * 24,
+                'sender'  => $dummies[2],
+                'type'    => 'boast',
+                'message' => 'Completed a 7-day streak! 🔥',
+                'title'   => '10-Minute Morning Stretch',
+                'c_idx'   => 2,
+                'mins_ago' => 60 * 24, // yesterday
             ],
             [
-                'sender'    => $dummies[3],
-                'type'      => 'remind',
-                'message'   => 'All challenges done. Time to poke friends!',
-                'title'     => 'Write 3 Key Takeaways',
-                'challenge' => $challenges[3],
-                'date'      => now()->subDay()->toDateString(),
-                'ago'       => 60 * 26,
+                'sender'  => $dummies[3],
+                'type'    => 'remind',
+                'message' => 'All challenges done. Time to poke your friends!',
+                'title'   => 'Write 3 Key Takeaways',
+                'c_idx'   => 3,
+                'mins_ago' => 60 * 26,
             ],
             [
-                'sender'    => $dummies[4],
-                'type'      => 'boast',
-                'message'   => 'Streak unlocked! Come join me! 🎉',
-                'title'     => 'Build One Small Feature',
-                'challenge' => $challenges[4],
-                'date'      => now()->subDays(2)->toDateString(),
-                'ago'       => 60 * 48,
+                'sender'  => $dummies[4],
+                'type'    => 'boast',
+                'message' => 'Streak unlocked! Come join me! 🎉',
+                'title'   => 'Build One Small Feature',
+                'c_idx'   => 4,
+                'mins_ago' => 60 * 48, // 2 days ago
             ],
         ];
 
-        foreach ($pokesData as $poke) {
+        foreach ($pokesConfig as $cfg) {
             ChallengePoke::create([
-                'sender_id'              => (string) $poke['sender']->getKey(),
-                'receiver_id'            => $finnId,
-                'user_daily_challenge_id'=> 'seeder_dummy',
-                'challenge_id'           => (string) $poke['challenge']->getKey(),
-                'type'                   => $poke['type'],
-                'message'                => $poke['message'],
-                'metadata'               => [
-                    'challenge_title' => $poke['title'],
-                    'challenge_date'  => $poke['date'],
-                    'completed_at'    => now()->subMinutes($poke['ago'])->toIso8601String(),
+                'sender_id'               => (string) $cfg['sender']->getKey(),
+                'receiver_id'             => $finnId,
+                'user_daily_challenge_id' => 'seeder_dummy',
+                'challenge_id'            => (string) $challenges[$cfg['c_idx']]->getKey(),
+                'type'                    => $cfg['type'],
+                'message'                 => $cfg['message'],
+                'metadata'                => [
+                    'challenge_title' => $cfg['title'],
+                    'challenge_date'  => now()->subMinutes($cfg['mins_ago'])->toDateString(),
+                    'completed_at'    => now()->subMinutes($cfg['mins_ago'])->toIso8601String(),
                 ],
                 'read_at'    => null,
-                'created_at' => now()->subMinutes($poke['ago']),
-                'updated_at' => now()->subMinutes($poke['ago']),
+                'created_at' => now()->subMinutes($cfg['mins_ago']),
+                'updated_at' => now()->subMinutes($cfg['mins_ago']),
             ]);
         }
     }
 
-    private function seedAchievements(User $finn): void
+    private function createAchievements(User $finn): void
     {
         $finnId = (string) $finn->getKey();
 
@@ -403,7 +378,7 @@ class DummyDataSeeder extends Seeder
 
         foreach ($achievements as $data) {
             UserAchievement::create([
-                'user_id'     => $finnId,
+                'user_id' => $finnId,
                 ...$data,
             ]);
         }

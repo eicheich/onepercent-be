@@ -1,89 +1,112 @@
 @extends('layouts.app')
 @section('title', 'Notifications')
 @section('page-title', 'Notifications')
-@section('page-subtitle', "You have {$unreadCount} unread")
+@section('page-subtitle', "{{ $unreadCount }} unread messages")
 
 @section('content')
-<div class="max-w-2xl mx-auto space-y-8 fade-in pb-10">
+<div class="max-w-2xl fade-in space-y-6">
 
     @if($notifications->isEmpty())
-        {{-- Empty State --}}
-        <div class="bg-white rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-[#EAE1FF] p-12 md:p-16 text-center relative overflow-hidden group flex flex-col items-center justify-center">
-            {{-- Aksen Latar --}}
-            <div class="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-[#F3EFFF] to-transparent rounded-full -mr-10 -mt-10 opacity-70 pointer-events-none group-hover:scale-110 transition-transform duration-700"></div>
-            <div class="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-tr from-[#F3EFFF] to-transparent rounded-full -ml-10 -mb-10 opacity-50 pointer-events-none"></div>
-
-            <div class="w-20 h-20 bg-gradient-to-br from-[#C7AFFF] to-[#B28CFF] rounded-[1.5rem] flex items-center justify-center mb-6 shadow-lg shadow-[#B28CFF]/20 rotate-12 group-hover:rotate-[-5deg] transition-transform duration-500 relative z-10">
-                <span class="text-4xl animate-pulse">🔔</span>
-            </div>
-
-            <p class="text-slate-800 font-black text-2xl mb-2 tracking-tight relative z-10">All Caught Up!</p>
-            <p class="text-slate-500 font-medium relative z-10">No new notifications right now.</p>
-            <p class="text-xs text-slate-400 mt-3 font-medium bg-slate-50 px-4 py-2 rounded-full border border-slate-100 relative z-10">
-                When friends poke you, it'll show here 👋
-            </p>
+    {{-- Empty State (Bento Style) --}}
+    <div class="bg-white rounded-3xl p-12 text-center shadow-[0_2px_10px_-4px_rgba(0,0,0,0.03)] border border-slate-100 flex flex-col items-center justify-center min-h-[400px]">
+        <div class="w-20 h-20 bg-slate-50 border border-slate-100 rounded-full flex items-center justify-center mb-6 shadow-inner-sm">
+            <span class="text-4xl filter drop-shadow-sm">🔔</span>
         </div>
+        <h3 class="font-black text-slate-800 text-lg tracking-tight mb-2">No notifications yet</h3>
+        <p class="text-sm font-medium text-slate-400 max-w-xs">
+            Activities from you, system alerts, and your friends' momentum will appear here.
+        </p>
+    </div>
     @else
 
-        @php
-            $today     = now()->toDateString();
-            $yesterday = now()->subDay()->toDateString();
-            $todayNotifs     = $notifications->filter(fn($n) => $n['created_at']?->toDateString() === $today);
-            $yesterdayNotifs = $notifications->filter(fn($n) => $n['created_at']?->toDateString() === $yesterday);
-            $olderNotifs     = $notifications->filter(fn($n) => $n['created_at']?->toDateString() < $yesterday)
-        @endphp
+    @php
+    $today     = now()->toDateString();
+    $yesterday = now()->subDay()->toDateString();
+    $todayNotifs     = $notifications->filter(fn($n) => $n->created_at?->toDateString() === $today);
+    $yesterdayNotifs = $notifications->filter(fn($n) => $n->created_at?->toDateString() === $yesterday);
+    $olderNotifs     = $notifications->filter(fn($n) => $n->created_at?->toDateString() < $yesterday);
+    @endphp
 
-        {{-- Today --}}
-        @if($todayNotifs->isNotEmpty())
-            <div class="mb-8">
-                <div class="flex items-center gap-4 mb-5 px-2">
-                    <h3 class="text-xs font-black text-[#9261F3] uppercase tracking-widest bg-[#F3EFFF] px-4 py-2 rounded-[1rem] shadow-sm">
-                        Today
-                    </h3>
-                    <div class="h-px bg-gradient-to-r from-[#EAE1FF] to-transparent flex-1"></div>
+    @foreach([
+        ['label' => 'Today',     'items' => $todayNotifs],
+        ['label' => 'Yesterday', 'items' => $yesterdayNotifs],
+        ['label' => 'Earlier',   'items' => $olderNotifs],
+    ] as $group)
+
+    @if($group['items']->isNotEmpty())
+    <div class="space-y-4">
+        {{-- Section Label --}}
+        <div class="flex items-center gap-3">
+            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1 rounded-md">
+                {{ $group['label'] }}
+            </h3>
+            <div class="flex-1 h-px bg-gradient-to-r from-slate-100 to-transparent"></div>
+        </div>
+
+        {{-- Notifications List --}}
+        <div class="space-y-3">
+            @foreach($group['items'] as $notif)
+            <div class="group bg-white rounded-2xl p-4 shadow-sm border transition-all duration-300 hover:shadow-md flex items-start gap-4 relative overflow-hidden
+                        {{ is_null($notif->read_at)
+                           ? 'border-[#B28CFF]/40 bg-slate-50/30'
+                           : 'border-slate-100 hover:border-slate-200' }}">
+
+                {{-- Left Accent Line for Unread --}}
+                @if(is_null($notif->read_at))
+                    <div class="absolute left-0 top-0 bottom-0 w-1 bg-[#9261F3]"></div>
+                @endif
+
+                {{-- Icon / Avatar --}}
+                <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0 border border-slate-100 shadow-inner-sm transition-transform duration-300 group-hover:scale-105
+                            {{ match($notif->type) {
+                                'follow', 'follow_back' => 'bg-blue-50 text-blue-500',
+                                'poke'                  => 'bg-orange-50 text-orange-500',
+                                'achievement'           => 'bg-amber-50 text-amber-500',
+                                'friend_completed'      => 'bg-emerald-50 text-emerald-500',
+                                default                 => 'bg-[#9261F3]/10 text-[#9261F3]'
+                            } }}">
+                    @php $avatar = $notif->data['actor_avatar'] ?? null @endphp
+                    @if($avatar && str_starts_with($avatar, 'http'))
+                        <img src="{{ $avatar }}" referrerpolicy="no-referrer" class="w-full h-full rounded-2xl object-cover p-0.5 bg-white">
+                    @elseif($avatar && str_starts_with($avatar, 'data:image'))
+                        <img src="{{ $avatar }}" class="w-full h-full rounded-2xl object-cover p-0.5 bg-white">
+                    @else
+                        {{ $notif->icon ?? '🔔' }}
+                    @endif
                 </div>
-                <div class="space-y-3">
-                    @foreach($todayNotifs as $notif)
-                        @include('web.partials.notif-item', ['notif' => $notif])
-                    @endforeach
+
+                {{-- Content Body --}}
+                <div class="flex-1 min-w-0 py-0.5">
+                    <p class="font-bold text-slate-800 text-sm tracking-tight {{ is_null($notif->read_at) ? 'text-[#9261F3]' : '' }}">
+                        {{ $notif->title }}
+                    </p>
+
+                    @if($notif->body)
+                        <p class="text-[13px] font-medium text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                            {{ $notif->body }}
+                        </p>
+                    @endif
+
+                    <p class="text-[11px] font-bold text-slate-400 mt-2 flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {{ $notif->created_at?->diffForHumans() }}
+                    </p>
                 </div>
+
+                {{-- Unread Dot Indicator (Right Side) --}}
+                @if(is_null($notif->read_at))
+                <div class="w-2.5 h-2.5 rounded-full bg-[#9261F3] flex-shrink-0 mt-2 shadow-[0_0_8px_rgba(146,97,243,0.5)]"></div>
+                @endif
+
             </div>
-        @endif
+            @endforeach
+        </div>
+    </div>
+    @endif
 
-        {{-- Yesterday --}}
-        @if($yesterdayNotifs->isNotEmpty())
-            <div class="mb-8">
-                <div class="flex items-center gap-4 mb-5 px-2">
-                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest bg-slate-100 px-4 py-2 rounded-[1rem] border border-slate-200">
-                        Yesterday
-                    </h3>
-                    <div class="h-px bg-gradient-to-r from-slate-200 to-transparent flex-1"></div>
-                </div>
-                <div class="space-y-3">
-                    @foreach($yesterdayNotifs as $notif)
-                        @include('web.partials.notif-item', ['notif' => $notif])
-                    @endforeach
-                </div>
-            </div>
-        @endif
-
-        {{-- Earlier --}}
-        @if($olderNotifs->isNotEmpty())
-            <div class="mb-8">
-                <div class="flex items-center gap-4 mb-5 px-2">
-                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest px-2">
-                        Earlier
-                    </h3>
-                    <div class="h-px bg-gradient-to-r from-slate-200 to-transparent flex-1"></div>
-                </div>
-                <div class="space-y-3">
-                    @foreach($olderNotifs as $notif)
-                        @include('web.partials.notif-item', ['notif' => $notif])
-                    @endforeach
-                </div>
-            </div>
-        @endif
-
+    @endforeach
     @endif
 </div>
 @endsection

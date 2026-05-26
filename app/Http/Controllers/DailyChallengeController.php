@@ -9,6 +9,7 @@ use App\Services\GeminiChallengeService;
 use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use \Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -57,101 +58,145 @@ class DailyChallengeController extends Controller
 
     public function generate(Request $request): JsonResponse
     {
-        $user = $request->user();
-        $userId = (string) $user->getKey();
-        $today = now()->toDateString();
+        $userId = (string) $request->user()->getKey();
+        $today  = now()->toDateString();
 
-        $existing = $this->findDailyChallengeForDate($userId, $today);
-
-        if ($existing) {
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Today challenge already generated.',
-                'data' => $this->buildChallengeResponse($existing, $today),
-            ]);
-        }
-
-        $personalization = UserPersonalization::query()
+        // Cek existing — pakai first() bukan create langsung
+        $existing = UserDailyChallenge::with('challenge')
             ->where('user_id', $userId)
+            ->where('challenge_date', $today)
             ->first();
 
-        $tags = $personalization?->tags ?? [];
-
-        if (count($tags) === 0) {
+        if ($existing !== null) {
             return response()->json([
-                'status' => 'error',
-                'message' => 'Please complete personalization tags first.',
-            ], 422);
+                'status'  => 'success',
+                'message' => 'Challenge already exists for today.',
+                'data'    => $this->buildChallengeResponse($existing, $today),
+            ]);
         }
 
-        $seenChallengeIds = $this->getSeenChallengeIds($userId);
-        $reusableChallenge = $this->findReusableChallenge($tags, $seenChallengeIds);
+        // Ambil tags user
+        $personalization = UserPersonalization::where('user_id', $userId)->first();
+        $tags = $personalization?->tags ?? ['technology', 'education'];
 
-        if ($reusableChallenge !== null) {
-            $challenge = $this->createDailyAssignment($userId, $today, $reusableChallenge, [
-                'provider' => 'reuse_pool',
-                'challenge_signature' => $reusableChallenge->signature,
+        // Coba Gemini
+        $challengeData = null;
+        $useGemini     = false;
+
+        try {
+            $gemini        = app(GeminiChallengeService::class);
+            $challengeData = $gemini->generateDailyChallenge($tags);
+            $useGemini     = true;
+        } catch (Throwable $e) {
+            Log::warning(
+                'Gemini failed: ' . $e->getMessage()
+            );
+        }
+
+        // Wrap dalam try-catch untuk handle duplicate key
+        try {
+            if (!$useGemini || !$challengeData) {
+                // Fallback pool — PHP filter, bukan whereIn
+                $allChallenges = Challenge::all();
+
+                if ($allChallenges->isEmpty()) {
+                    return response()->json([
+                        'status'  => 'error',
+                        'message' => 'No challenges available.',
+                    ], 503);
+                }
+
+                $matching = $allChallenges->filter(
+                    fn($c) => count(array_intersect((array)($c->tags ?? []), $tags)) > 0
+                );
+
+                $poolChallenge = $matching->isNotEmpty()
+                    ? $matching->random()
+                    : $allChallenges->random();
+
+                $userChallenge = UserDailyChallenge::create([
+                    'user_id'        => $userId,
+                    'challenge_id'   => (string) $poolChallenge->getKey(),
+                    'challenge_date' => $today,
+                    'is_completed'   => false,
+                    'completed_at'   => null,
+                    'expires_at'     => now()->addDay()->startOfDay(),
+                    'metadata'       => ['provider' => 'pool'],
+                ]);
+
+                return response()->json([
+                    'status'  => 'success',
+                    'message' => 'Challenge generated.',
+                    'data'    => $this->buildChallengeResponse(
+                        $userChallenge->load('challenge'),
+                        $today
+                    ),
+                ]);
+            }
+
+            // Dari Gemini
+            $challenge = Challenge::create([
+                'title'             => $challengeData['title'],
+                'content'           => $challengeData['content'],
+                'estimated_minutes' => (int) ($challengeData['estimated_minutes'] ?? 15),
+                'tags'              => $challengeData['tags'] ?? $tags,
+                'signature'         => md5($challengeData['title'] . $today . $userId),
+                'metadata'          => ['provider' => 'gemini'],
+            ]);
+
+            $userChallenge = UserDailyChallenge::create([
+                'user_id'        => $userId,
+                'challenge_id'   => (string) $challenge->getKey(),
+                'challenge_date' => $today,
+                'is_completed'   => false,
+                'completed_at'   => null,
+                'expires_at'     => now()->endOfDay(),
+                'metadata'       => ['provider' => 'gemini'],
             ]);
 
             return response()->json([
-                'status' => 'success',
-                'message' => 'Daily challenge reused from similar tags pool.',
-                'data' => $this->buildChallengeResponse($challenge, $today),
-            ], 201);
-        }
+                'status'  => 'success',
+                'message' => 'Challenge generated.',
+                'data'    => $this->buildChallengeResponse(
+                    $userChallenge->load('challenge'),
+                    $today
+                ),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Generate error: ' . $e->getMessage());
+            // Handle duplicate key — ambil yang sudah ada
+            if (
+                str_contains($e->getMessage(), 'E11000') ||
+                str_contains($e->getMessage(), 'duplicate key')
+            ) {
 
-        try {
-            $generated = $this->geminiChallengeService->generateDailyChallenge($tags, (string) ($user->name ?? 'User'));
-        } catch (Throwable $exception) {
+                $existing = UserDailyChallenge::with('challenge')
+                    ->where('user_id', $userId)
+                    ->where('challenge_date', $today)
+                    ->first();
+
+                if ($existing !== null) {
+                    return response()->json([
+                        'status'  => 'success',
+                        'message' => 'Challenge already exists.',
+                        'data'    => $this->buildChallengeResponse($existing, $today),
+                    ]);
+                }
+            }
+            Log::error('Generate error: ' . $e->getMessage());
+
             return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to generate daily challenge.',
-                'error' => $exception->getMessage(),
-            ], 502);
+                'status'  => 'error',
+                'message' => 'Failed to generate challenge. Please try again.',
+            ], 500);
         }
-
-        $signature = $this->buildChallengeSignature($generated['title'], $generated['content']);
-
-        $challengePool = Challenge::query()->firstOrCreate(
-            ['signature' => $signature],
-            [
-                'title' => $generated['title'],
-                'content' => $generated['content'],
-                'estimated_minutes' => (int) ($generated['estimated_minutes'] ?? 15),
-                'tags' => $tags,
-                'metadata' => [
-                    'provider' => 'gemini',
-                    'model' => $generated['model'],
-                    'raw' => $generated['raw'],
-                ],
-            ]
-        );
-
-        if (in_array((string) $challengePool->getKey(), $seenChallengeIds, true)) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'A similar challenge already exists for this user. Try generate again later.',
-            ], 409);
-        }
-
-        $challenge = $this->createDailyAssignment($userId, $today, $challengePool, [
-            'provider' => 'gemini',
-            'model' => $generated['model'],
-            'challenge_signature' => $signature,
-        ]);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Daily challenge generated.',
-            'data' => $this->buildChallengeResponse($challenge, $today),
-        ], 201);
     }
 
     public function complete(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'user_daily_challenge_id' => ['nullable', 'string', 'max:120'],
-            'reflection' => ['nullable', 'string', 'min:5', 'max:1200'],
+            'reflection' => ['nullable', 'string', 'max:1200'],
         ]);
 
         $userId = (string) $request->user()->getKey();
@@ -165,29 +210,33 @@ class DailyChallengeController extends Controller
         if ($userDailyChallengeId !== '') {
             $challengeQuery->where('_id', $userDailyChallengeId);
         } else {
-            $dayStart = Carbon::parse($today)->startOfDay();
-            $dayEnd = Carbon::parse($today)->endOfDay();
-
-            $challengeQuery->where(function ($query) use ($today, $dayStart, $dayEnd) {
-                $query->where('challenge_date', $today)
-                    ->orWhereBetween('challenge_date', [$dayStart, $dayEnd]);
-            });
+            // Pakai string comparison saja — bukan Carbon/whereBetween
+            $challengeQuery->where('challenge_date', $today);
         }
 
         $challenge = $challengeQuery->first();
 
         if ($challenge === null) {
             return response()->json([
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => $userDailyChallengeId !== ''
                     ? 'Daily challenge with the given id was not found.'
                     : 'No daily challenge found for today.',
             ], 404);
         }
 
-        $challengeDate = $challenge->challenge_date?->toDateString() ?? $today;
+        $challengeDate = $today;
+        if ($challenge->challenge_date instanceof \Carbon\Carbon) {
+            $challengeDate = $challenge->challenge_date->toDateString();
+        } elseif (is_string($challenge->challenge_date)) {
+            $challengeDate = $challenge->challenge_date;
+        }
 
-        return $this->completeAssignment($challenge, $challengeDate, $validated['reflection'] ?? null);
+        return $this->completeAssignment(
+            $challenge,
+            $challengeDate,
+            $validated['reflection'] ?? null
+        );
     }
 
     private function buildChallengeResponse(UserDailyChallenge $challenge, string $fallbackDate): array
@@ -281,7 +330,99 @@ class DailyChallengeController extends Controller
 
         return "Complete one practical {$focus} task for 15 minutes and note 3 takeaways.";
     }
+    public function regenerate(Request $request): JsonResponse
+    {
+        $userId = (string) $request->user()->getKey();
+        $today  = now()->toDateString();
 
+        $existing = UserDailyChallenge::with('challenge')
+            ->where('user_id', $userId)
+            ->where('challenge_date', $today)
+            ->first();
+
+        if ($existing === null) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'No challenge found for today.',
+            ], 404);
+        }
+
+        // Cek sudah completed
+        if ((bool) $existing->is_completed) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Cannot regenerate a completed challenge.',
+            ], 422);
+        }
+
+        // Cek regenerate count
+        $metadata       = (array) ($existing->metadata ?? []);
+        $regenCount     = (int) ($metadata['regenerate_count'] ?? 0);
+        $maxRegen       = 3;
+
+        if ($regenCount >= $maxRegen) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Regenerate limit reached (max ' . $maxRegen . 'x per day).',
+                'data'    => ['remaining' => 0],
+            ], 422);
+        }
+
+        // Generate challenge baru
+        $personalization = UserPersonalization::where('user_id', $userId)->first();
+        $tags = $personalization?->tags ?? ['technology', 'education'];
+
+        $challengeData = null;
+
+        try {
+            $gemini        = app(GeminiChallengeService::class);
+            $challengeData = $gemini->generateDailyChallenge($tags);
+        } catch (Throwable $e) {
+            Log::warning('Regen Gemini failed: ' . $e->getMessage());
+        }
+
+        // Buat atau ambil challenge
+        if ($challengeData !== null) {
+            $newChallenge = Challenge::create([
+                'title'             => $challengeData['title'],
+                'content'           => $challengeData['content'],
+                'estimated_minutes' => (int) ($challengeData['estimated_minutes'] ?? 15),
+                'tags'              => $challengeData['tags'] ?? $tags,
+                'signature'         => md5($challengeData['title'] . $today . $userId . $regenCount),
+                'metadata'          => ['provider' => 'gemini'],
+            ]);
+        } else {
+            $allChallenges = Challenge::all();
+            $matching = $allChallenges->filter(
+                fn($c) => count(array_intersect((array)($c->tags ?? []), $tags)) > 0
+                    && (string) $c->getKey() !== (string) ($existing->challenge_id ?? '')
+            );
+            $newChallenge = $matching->isNotEmpty()
+                ? $matching->random()
+                : $allChallenges->filter(
+                    fn($c) => (string) $c->getKey() !== (string) ($existing->challenge_id ?? '')
+                )->random();
+        }
+
+        // Update existing record — ganti challenge_id + increment count
+        $metadata['regenerate_count']  = $regenCount + 1;
+        $metadata['last_regenerated']  = now()->toIso8601String();
+        $metadata['provider']          = $challengeData !== null ? 'gemini' : 'pool';
+
+        $existing->forceFill([
+            'challenge_id' => (string) $newChallenge->getKey(),
+            'metadata'     => $metadata,
+        ])->save();
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Challenge regenerated.',
+            'data'    => array_merge(
+                $this->buildChallengeResponse($existing->load('challenge'), $today),
+                ['remaining_regenerates' => $maxRegen - ($regenCount + 1)]
+            ),
+        ]);
+    }
     private function inferFocusFromText(string $text, array $tags): string
     {
         $normalized = Str::lower($text);
@@ -383,16 +524,10 @@ class DailyChallengeController extends Controller
 
     private function findDailyChallengeForDate(string $userId, string $date): ?UserDailyChallenge
     {
-        $dayStart = Carbon::parse($date)->startOfDay();
-        $dayEnd = Carbon::parse($date)->endOfDay();
-
         return UserDailyChallenge::query()
             ->with('challenge')
             ->where('user_id', $userId)
-            ->where(function ($query) use ($date, $dayStart, $dayEnd) {
-                $query->where('challenge_date', $date)
-                    ->orWhereBetween('challenge_date', [$dayStart, $dayEnd]);
-            })
+            ->where('challenge_date', $date)
             ->orderBy('created_at', 'desc')
             ->first();
     }
@@ -414,6 +549,7 @@ class DailyChallengeController extends Controller
         $reflectionText = $reflection !== null ? trim($reflection) : null;
         $metadata = (array) ($challenge->metadata ?? []);
 
+        // 1. Cek jika sudah selesai
         if ((bool) $challenge->is_completed) {
             return response()->json([
                 'status' => 'success',
@@ -422,6 +558,7 @@ class DailyChallengeController extends Controller
             ]);
         }
 
+        // 2. Cek waktu kedaluwarsa
         if ($challenge->expires_at !== null && now()->greaterThan($challenge->expires_at)) {
             return response()->json([
                 'status' => 'error',
@@ -435,16 +572,54 @@ class DailyChallengeController extends Controller
             $metadata['reflection_submitted_at'] = now()->toIso8601String();
         }
 
+        // 3. Simpan perubahan challenge ke database
         $challenge->forceFill([
             'is_completed' => true,
             'completed_at' => now(),
             'metadata'     => $metadata,
         ])->save();
 
-        // Update streak user
+        // 4. Update streak user
         $this->updateStreak($challenge->user_id);
+
+        // 5. Cek dan proses achievement
         $achievementService = app(\App\Services\AchievementService::class);
         $newlyUnlocked = $achievementService->checkAndUnlock($challenge->user_id);
+
+        // Kirim notifikasi jika ada achievement baru
+        foreach ($newlyUnlocked as $ach) {
+            \App\Services\NotificationService::notifyAchievement(
+                $challenge->user_id,
+                $ach['name'],
+                $ach['icon']
+            );
+        }
+
+        // 6. Cek mutual friend untuk notifikasi sosial
+        $followingIds = \App\Models\UserFollow::where('follower_id', $challenge->user_id)
+            ->pluck('following_id')
+            ->map(fn($id) => (string) $id)
+            ->all();
+
+        $followerIds = \App\Models\UserFollow::where('following_id', $challenge->user_id)
+            ->pluck('follower_id')
+            ->map(fn($id) => (string) $id)
+            ->all();
+
+        $mutualIds = array_intersect($followingIds, $followerIds);
+
+        // Kirim notifikasi ke mutual friend jika ada
+        if (!empty($mutualIds)) {
+            $challengeTitle = $challenge->fresh(['challenge'])->challenge?->title ?? 'Daily Challenge';
+
+            \App\Services\NotificationService::notifyChallengeComplete(
+                $challenge->user_id,
+                $challengeTitle,
+                array_values($mutualIds)
+            );
+        }
+
+        // 7. Bangun response data dan return paling akhir
         $responseData = $this->buildChallengeResponse($challenge->fresh(['challenge']), $today);
         $responseData['newly_unlocked_achievements'] = $newlyUnlocked;
 

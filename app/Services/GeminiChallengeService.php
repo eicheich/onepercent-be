@@ -26,51 +26,85 @@ class GeminiChallengeService
         ];
     }
 
-    public function generateDailyChallenge(array $tags, string $userName): array
+    public function generateDailyChallenge(array $tags): array
     {
-        $configuredModel = (string) config('services.gemini.model', 'gemini-1.5-flash');
+        $apiKey  = (string) config('services.gemini.api_key');
+        if (empty($apiKey)) {
+            throw new RuntimeException(
+                'GEMINI_API_KEY is not configured. Check your .env file.'
+            );
+        }
+        $model   = (string) config('services.gemini.model', 'gemini-1.5-flash');
+        $baseUrl = rtrim((string) config(
+            'services.gemini.base_url',
+            'https://generativelanguage.googleapis.com/v1beta'
+        ), '/');
 
         $tagList = implode(', ', $tags);
 
         $prompt = <<<PROMPT
-    Create ONE lightweight daily challenge for a general user (not specifically office/corporate).
-    User name: {$userName}
-    Tags: {$tagList}
+You are a daily self-improvement challenge generator.
 
-    Guidelines:
-    - Keep it practical for everyday life.
-    - Match challenge topic to tags.
-    - Use simple language.
-    - Title must be specific, minimum 3 words, and should not end with hanging words like "your" or "the".
-    - Avoid corporate wording like stakeholder, meeting, KPI, sprint, report.
+Generate ONE daily challenge for a user interested in: {$tagList}
 
-    Examples:
-    - If tag includes uiux: "Design a simple login screen wireframe with email + password + one social login button."
-    - If tag includes logic: "Solve 3 short logic puzzles and write your reasoning."
-    - If tag includes education/lifestyle: "Read 10 pages of a book and summarize 3 key points."
+Requirements:
+- MUST relate to: {$tagList}
+- Completable in 10-30 minutes
+- Specific and actionable
 
-    Return only plain text in this exact format:
-    Title: <max 8 words>
-    Description: <max 30 words, one actionable task>
-    Duration: <estimated minutes, integer between 5 and 60>
+Rules:
+- The challenge MUST be directly related to one or more of these topics: {$tagList}
+- It must be completable in 10-30 minutes
+- Be specific and actionable, not vague
+- Title: max 8 words, no generic words like "daily challenge"
+
+Respond ONLY with valid JSON, no markdown, no explanation:
+{
+  "title": "specific challenge title here",
+  "content": "detailed description of what to do, 2-3 sentences",
+  "estimated_minutes": 15,
+  "tags": ["{$tags[0]}"]
+}
 PROMPT;
 
-        [$text, $usedModel] = $this->requestGenerateContent($configuredModel, $prompt, 0.3, 120);
+        $response = Http::timeout(30)
+            ->post("{$baseUrl}/models/{$model}:generateContent?key={$apiKey}", [
+                'contents' => [
+                    ['parts' => [['text' => $prompt]]],
+                ],
+                'generationConfig' => [
+                    'temperature'     => 0.8,
+                    'maxOutputTokens' => 300,
+                ],
+            ]);
 
-        if ($text === '') {
-            throw new RuntimeException('Gemini returned empty challenge content.');
+        if (!$response->successful()) {
+            throw new RuntimeException(
+                'Gemini API error: ' . $response->status() . ' ' . $response->body()
+            );
         }
 
-        $title = $this->extractTitle($text, $tags);
-        $content = $this->extractChallengeBody($text, $title, $tags);
-        $estimatedMinutes = $this->extractEstimatedMinutes($text);
+        $text = trim((string) data_get(
+            $response->json(),
+            'candidates.0.content.parts.0.text',
+            ''
+        ));
+
+        // Strip markdown code blocks kalau ada
+        $text = preg_replace('/```json\s*|\s*```/', '', $text);
+        $text = trim($text);
+
+        $data = json_decode($text, true);
+
+        if (!$data || empty($data['title']) || empty($data['content'])) {
+            throw new RuntimeException('Invalid Gemini response: ' . $text);
+        }
 
         return [
-            'title' => $title,
-            'content' => $content,
-            'estimated_minutes' => $estimatedMinutes,
-            'raw' => $text,
-            'model' => $usedModel,
+            'title'             => (string) $data['title'],
+            'content'           => (string) $data['content'],
+            'estimated_minutes' => (int) ($data['estimated_minutes'] ?? 15),
+            'tags'              => (array) ($data['tags'] ?? $tags),
         ];
     }
 
@@ -461,67 +495,82 @@ PROMPT;
         return 15;
     }
     public function scoreProof(
-        string $base64File,
+        string $base64Data,
         string $mimeType,
         string $challengeTitle,
-        string $challengeDescription
+        string $challengeContent
     ): array {
-        $apiKey = (string) config('services.gemini.api_key');
-        $configuredModel = (string) config('services.gemini.model', 'gemini-1.5-flash');
-        $baseUrl = rtrim((string) config(
-            'services.gemini.base_url',
-            'https://generativelanguage.googleapis.com/v1beta'
-        ), '/');
+        $apiKey = config('services.gemini.api_key');
+        $model = config('services.gemini.model', 'gemini-1.5-flash');
+        $url = config('services.gemini.base_url')
+            . "/models/{$model}:generateContent?key={$apiKey}";
 
-        $prompt = <<<PROMPT
-You are evaluating a user's submission for a daily self-improvement challenge.
+        $prompt = "You are evaluating proof of work for a daily challenge.
 
-Challenge Title: {$challengeTitle}
-Challenge Description: {$challengeDescription}
+Challenge: {$challengeTitle}
+Description: {$challengeContent}
 
-The user has submitted a file as proof of completing this challenge.
-Please evaluate the submission and provide:
-1. A score from 0 to 100 based on relevance and quality
-2. Brief constructive feedback (max 30 words)
+Please evaluate the uploaded file/image as proof of completing this challenge.
+Respond ONLY with valid JSON, no markdown, no explanation:
+{
+  \"score\": <integer 0-100>,
+  \"feedback\": \"<constructive feedback in 1-2 sentences>\",
+  \"suggestions\": \"<1 specific suggestion to improve next time>\"
+}";
 
-Return ONLY in this exact format:
-Score: <integer 0-100>
-Feedback: <max 30 words>
-PROMPT;
-
-        $response = \Illuminate\Support\Facades\Http::withQueryParameters(['key' => $apiKey])
-            ->timeout(30)
-            ->post("{$baseUrl}/models/{$configuredModel}:generateContent", [
-                'contents' => [
-                    [
-                        'parts' => [
-                            [
-                                'inline_data' => [
-                                    'mime_type' => $mimeType,
-                                    'data'      => $base64File,
-                                ],
+        $payload = [
+            'contents' => [
+                [
+                    'parts' => [
+                        [
+                            'inline_data' => [
+                                'mime_type' => $mimeType,
+                                'data'      => $base64Data,
                             ],
-                            ['text' => $prompt],
                         ],
+                        ['text' => $prompt],
                     ],
                 ],
-                'generationConfig' => [
-                    'temperature'     => 0.2,
-                    'maxOutputTokens' => 80,
-                ],
-            ]);
+            ],
+            'generationConfig' => [
+                'temperature'     => 0.3,
+                'maxOutputTokens' => 300,
+            ],
+        ];
+
+        $response = Http::timeout(30)
+            ->withHeaders(['Content-Type' => 'application/json'])
+            ->post($url, $payload);
 
         if (!$response->successful()) {
-            throw new \RuntimeException('Gemini scoring failed: ' . $response->body());
+            throw new RuntimeException(
+                'Gemini API error: ' . $response->status()
+                    . ' ' . $response->body()
+            );
         }
 
-        $text = trim((string) data_get(
-            $response->json(),
-            'candidates.0.content.parts.0.text',
-            ''
-        ));
+        $data = $response->json();
+        $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
 
-        return $this->parseScoreResponse($text);
+        // Clean JSON dari markdown kalau ada
+        $text = preg_replace('/```json\s*|\s*```/', '', trim($text));
+
+        $result = json_decode($text, true);
+
+        if (!$result || !isset($result['score'])) {
+            // Fallback kalau parse gagal
+            return [
+                'score'       => 70,
+                'feedback'    => 'Good effort! Keep it up.',
+                'suggestions' => 'Try to be more detailed next time.',
+            ];
+        }
+
+        return [
+            'score'       => (int) $result['score'],
+            'feedback'    => $result['feedback'] ?? 'Good job!',
+            'suggestions' => $result['suggestions'] ?? '',
+        ];
     }
 
     private function parseScoreResponse(string $text): array
