@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class GeminiChallengeService
@@ -100,11 +101,45 @@ PROMPT;
             throw new RuntimeException('Invalid Gemini response: ' . $text);
         }
 
+        // Normalize and prefer user-selected tags.
+        $returnedTagsRaw = (array) ($data['tags'] ?? []);
+        $returnedTags = array_values(array_filter(array_map(fn($t) => Str::lower(trim((string) $t)), $returnedTagsRaw)));
+        $userTags = array_values(array_filter(array_map(fn($t) => Str::lower(trim((string) $t)), $tags)));
+
+        // If Gemini returned tags that overlap with the user's tags, prefer that intersection.
+        $overlap = array_values(array_intersect($returnedTags, $userTags));
+
+        if (!empty($overlap)) {
+            $finalTags = array_values(array_unique($overlap));
+        } else {
+            // No overlap — fallback to user's tags and log for investigation
+            $finalTags = $userTags;
+            try {
+                Log::warning('Gemini returned tags with no overlap to user tags; falling back to user tags', [
+                    'user_tags' => $userTags,
+                    'returned_tags' => $returnedTags,
+                    'response_sample' => Str::limit($text, 400),
+                ]);
+            } catch (\Throwable $e) {
+                // swallow logging errors
+            }
+        }
+
+        try {
+            Log::debug('Gemini generateDailyChallenge result', [
+                'user_tags' => $userTags,
+                'returned_tags' => $returnedTags,
+                'final_tags' => $finalTags,
+            ]);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
         return [
             'title'             => (string) $data['title'],
             'content'           => (string) $data['content'],
             'estimated_minutes' => (int) ($data['estimated_minutes'] ?? 15),
-            'tags'              => (array) ($data['tags'] ?? $tags),
+            'tags'              => $finalTags,
         ];
     }
 

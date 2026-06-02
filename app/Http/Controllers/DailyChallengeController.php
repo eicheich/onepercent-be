@@ -9,13 +9,32 @@ use App\Services\GeminiChallengeService;
 use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use \Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
 class DailyChallengeController extends Controller
 {
     public function __construct(private GeminiChallengeService $geminiChallengeService) {}
+
+    private function todayRange(): array
+    {
+        $start = now()->startOfDay();
+        $end = now()->endOfDay();
+
+        return [$start, $end, $start->toDateString()];
+    }
+
+    private function findTodayChallenge(string $userId): ?UserDailyChallenge
+    {
+        [$start, $end] = $this->todayRange();
+
+        return UserDailyChallenge::with('challenge')
+            ->where('user_id', $userId)
+            ->where('challenge_date', '>=', $start)
+            ->where('challenge_date', '<=', $end)
+            ->first();
+    }
 
     public function testAi(): JsonResponse
     {
@@ -47,8 +66,8 @@ class DailyChallengeController extends Controller
     public function today(Request $request): JsonResponse
     {
         $userId = (string) $request->user()->getKey();
-        $today = now()->toDateString();
-        $challenge = $this->findDailyChallengeForDate($userId, $today);
+        [, , $today] = $this->todayRange();
+        $challenge = $this->findTodayChallenge($userId);
 
         return response()->json([
             'status' => 'success',
@@ -59,12 +78,12 @@ class DailyChallengeController extends Controller
     public function generate(Request $request): JsonResponse
     {
         $userId = (string) $request->user()->getKey();
-        $today  = now()->toDateString();
+        [$start, $end, $today] = $this->todayRange();
 
-        // Cek existing — pakai first() bukan create langsung
         $existing = UserDailyChallenge::with('challenge')
             ->where('user_id', $userId)
-            ->where('challenge_date', $today)
+            ->where('challenge_date', '>=', $start)
+            ->where('challenge_date', '<=', $end)
             ->first();
 
         if ($existing !== null) {
@@ -78,6 +97,16 @@ class DailyChallengeController extends Controller
         // Ambil tags user
         $personalization = UserPersonalization::where('user_id', $userId)->first();
         $tags = $personalization?->tags ?? ['technology', 'education'];
+
+        // Temporary debug logging: record which tags are being used for generation (API)
+        try {
+            Log::info('DailyChallenge generate called', [
+                'user_id' => $userId,
+                'tags' => $tags,
+            ]);
+        } catch (\Throwable $e) {
+            // Don't let logging break generation
+        }
 
         // Coba Gemini
         $challengeData = null;
@@ -96,23 +125,41 @@ class DailyChallengeController extends Controller
         // Wrap dalam try-catch untuk handle duplicate key
         try {
             if (!$useGemini || !$challengeData) {
-                // Fallback pool — PHP filter, bukan whereIn
+                // Fallback pool — prefer challenge that overlaps user tags.
+                // If none found, create a deterministic local challenge from user tags.
                 $allChallenges = Challenge::all();
 
                 if ($allChallenges->isEmpty()) {
-                    return response()->json([
-                        'status'  => 'error',
-                        'message' => 'No challenges available.',
-                    ], 503);
+                    $manual = $this->buildManualChallengeData($tags, $userId . '|' . $today . '|empty-pool');
+                    $poolChallenge = Challenge::create([
+                        'title'             => $manual['title'],
+                        'content'           => $manual['content'],
+                        'estimated_minutes' => $manual['estimated_minutes'],
+                        'tags'              => $manual['tags'],
+                        'signature'         => md5($manual['title'] . $today . $userId . 'manual-empty-pool'),
+                        'metadata'          => ['provider' => 'fallback-local-empty-pool'],
+                    ]);
+                } else {
+                    $matching = $allChallenges->filter(
+                        fn($c) => count(array_intersect((array)($c->tags ?? []), $tags)) > 0
+                    );
+
+                    if ($matching->isNotEmpty()) {
+                        $poolChallenge = $matching
+                            ->sortByDesc(fn($c) => count(array_intersect((array)($c->tags ?? []), $tags)))
+                            ->first();
+                    } else {
+                        $manual = $this->buildManualChallengeData($tags, $userId . '|' . $today . '|no-overlap');
+                        $poolChallenge = Challenge::create([
+                            'title'             => $manual['title'],
+                            'content'           => $manual['content'],
+                            'estimated_minutes' => $manual['estimated_minutes'],
+                            'tags'              => $manual['tags'],
+                            'signature'         => md5($manual['title'] . $today . $userId . 'manual-no-overlap'),
+                            'metadata'          => ['provider' => 'fallback-local-no-overlap'],
+                        ]);
+                    }
                 }
-
-                $matching = $allChallenges->filter(
-                    fn($c) => count(array_intersect((array)($c->tags ?? []), $tags)) > 0
-                );
-
-                $poolChallenge = $matching->isNotEmpty()
-                    ? $matching->random()
-                    : $allChallenges->random();
 
                 $userChallenge = UserDailyChallenge::create([
                     'user_id'        => $userId,
@@ -170,10 +217,7 @@ class DailyChallengeController extends Controller
                 str_contains($e->getMessage(), 'duplicate key')
             ) {
 
-                $existing = UserDailyChallenge::with('challenge')
-                    ->where('user_id', $userId)
-                    ->where('challenge_date', $today)
-                    ->first();
+                $existing = $this->findTodayChallenge($userId);
 
                 if ($existing !== null) {
                     return response()->json([
@@ -301,7 +345,6 @@ class DailyChallengeController extends Controller
                 return false;
             }
         }
-
         return true;
     }
 
@@ -333,11 +376,12 @@ class DailyChallengeController extends Controller
     public function regenerate(Request $request): JsonResponse
     {
         $userId = (string) $request->user()->getKey();
-        $today  = now()->toDateString();
+        [$start, $end, $today] = $this->todayRange();
 
         $existing = UserDailyChallenge::with('challenge')
             ->where('user_id', $userId)
-            ->where('challenge_date', $today)
+            ->where('challenge_date', '>=', $start)
+            ->where('challenge_date', '<=', $end)
             ->first();
 
         if ($existing === null) {
@@ -372,6 +416,16 @@ class DailyChallengeController extends Controller
         $personalization = UserPersonalization::where('user_id', $userId)->first();
         $tags = $personalization?->tags ?? ['technology', 'education'];
 
+        // Temporary debug logging: record which tags are being used for regeneration
+        try {
+            Log::info('DailyChallenge regenerate called', [
+                'user_id' => $userId,
+                'tags' => $tags,
+            ]);
+        } catch (\Throwable $e) {
+            // Don't break regeneration flow if logging fails
+        }
+
         $challengeData = null;
 
         try {
@@ -397,11 +451,22 @@ class DailyChallengeController extends Controller
                 fn($c) => count(array_intersect((array)($c->tags ?? []), $tags)) > 0
                     && (string) $c->getKey() !== (string) ($existing->challenge_id ?? '')
             );
-            $newChallenge = $matching->isNotEmpty()
-                ? $matching->random()
-                : $allChallenges->filter(
-                    fn($c) => (string) $c->getKey() !== (string) ($existing->challenge_id ?? '')
-                )->random();
+
+            if ($matching->isNotEmpty()) {
+                $newChallenge = $matching
+                    ->sortByDesc(fn($c) => count(array_intersect((array)($c->tags ?? []), $tags)))
+                    ->first();
+            } else {
+                $manual = $this->buildManualChallengeData($tags, $userId . '|' . $today . '|regen|' . ($regenCount + 1));
+                $newChallenge = Challenge::create([
+                    'title'             => $manual['title'],
+                    'content'           => $manual['content'],
+                    'estimated_minutes' => $manual['estimated_minutes'],
+                    'tags'              => $manual['tags'],
+                    'signature'         => md5($manual['title'] . $today . $userId . 'regen-manual-no-overlap'),
+                    'metadata'          => ['provider' => 'fallback-local-regenerate'],
+                ]);
+            }
         }
 
         // Update existing record — ganti challenge_id + increment count
@@ -502,6 +567,80 @@ class DailyChallengeController extends Controller
     private function buildChallengeSignature(string $title, string $content): string
     {
         return sha1(Str::lower(trim($title) . '|' . trim($content)));
+    }
+
+    private function buildManualChallengeData(array $tags, string $seed = ''): array
+    {
+        $normalized = collect($tags)
+            ->map(fn($tag) => Str::lower(trim((string) $tag)))
+            ->filter()
+            ->values()
+            ->all();
+
+        if (count($normalized) === 0) {
+            $normalized = ['education'];
+        }
+
+        $primaryTag = (string) ($normalized[0] ?? 'education');
+        $secondaryTag = (string) ($normalized[1] ?? '');
+        $primary = Str::title($primaryTag);
+        $secondary = Str::title($secondaryTag);
+
+        $seedValue = $seed !== '' ? $seed : implode('|', $normalized);
+        $hash = abs((int) crc32($seedValue));
+
+        $titleTemplates = [
+            '%s Concept Deep Dive',
+            '%s Practical Micro Project',
+            '%s Skill Builder Session',
+            '%s Applied Learning Sprint',
+            '%s Quick Execution Challenge',
+            '%s Daily Focus Mission',
+        ];
+
+        if ($secondary !== '') {
+            $titleTemplates[] = '%s + %s Integration Task';
+            $titleTemplates[] = '%s and %s Applied Sprint';
+        }
+
+        $titleTemplate = $titleTemplates[$hash % count($titleTemplates)];
+        $title = Str::contains($titleTemplate, '%s + %s') || Str::contains($titleTemplate, '%s and %s')
+            ? sprintf($titleTemplate, $primary, $secondary)
+            : sprintf($titleTemplate, $primary);
+
+        $minutesOptions = [12, 15, 18, 20, 25, 30];
+        $estimatedMinutes = $minutesOptions[$hash % count($minutesOptions)];
+
+        $singleTemplates = [
+            'Learn one new concept about %s today and apply it to one small task in your current project or routine.',
+            'Find one practical technique in %s, try it immediately, and note what changed before and after.',
+            'Review one real-world example in %s, then create your own mini version with clear steps.',
+            'Audit one part of your current workflow related to %s and make one concrete improvement today.',
+            'Read or watch one short resource about %s, then implement one actionable idea right away.',
+            'Build a tiny output in %s (checklist, snippet, draft, or plan) that you can actually reuse tomorrow.',
+        ];
+
+        $dualTemplates = [
+            'Pick one small task that combines %s and %s, complete it end-to-end, then write what worked and what to improve.',
+            'Compare one approach from %s and one from %s, then merge them into a single practical action today.',
+            'Create a mini experiment using %s with %s, execute it now, and summarize the result in 3 bullet points.',
+            'Choose one active task and improve it by applying one %s idea and one %s idea in the same session.',
+        ];
+
+        if ($secondaryTag !== '') {
+            $contentTemplate = $dualTemplates[$hash % count($dualTemplates)];
+            $content = sprintf($contentTemplate, $primaryTag, $secondaryTag);
+        } else {
+            $contentTemplate = $singleTemplates[$hash % count($singleTemplates)];
+            $content = sprintf($contentTemplate, $primaryTag);
+        }
+
+        return [
+            'title' => $title,
+            'content' => $content,
+            'estimated_minutes' => $estimatedMinutes,
+            'tags' => $normalized,
+        ];
     }
 
     private function createDailyAssignment(string $userId, string $challengeDate, Challenge $challengePool, array $metadata): UserDailyChallenge

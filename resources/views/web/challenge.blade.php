@@ -95,11 +95,41 @@
 
                                 @if ($todayChallenge->is_completed)
                                     <div
-                                        class="bg-emerald-50 border border-emerald-100 rounded-[2rem] p-8 text-center shadow-sm">
-                                        <div class="text-5xl mb-4 animate-bounce">💡</div>
-                                        <p class="text-emerald-600 font-black text-2xl tracking-tight">Challenge Clear!</p>
-                                        <p class="text-emerald-600/80 text-sm mt-2 font-medium">You earned points today.
-                                            Keep it up!</p>
+                                        class="relative overflow-hidden rounded-[2rem] border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-[#F3EFFF] p-6 md:p-8 shadow-sm">
+                                        <div
+                                            class="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-emerald-200/40 blur-3xl">
+                                        </div>
+                                        <div
+                                            class="absolute -bottom-10 -left-10 w-28 h-28 rounded-full bg-[#B28CFF]/20 blur-3xl">
+                                        </div>
+
+                                        <div class="relative z-10 flex flex-col md:flex-row md:items-center gap-5">
+                                            <div
+                                                class="w-16 h-16 rounded-[1.5rem] bg-white shadow-lg shadow-emerald-100 border border-emerald-100 flex items-center justify-center text-3xl shrink-0">
+                                                🏆
+                                            </div>
+
+                                            <div class="flex-1">
+                                                <div class="flex flex-wrap items-center gap-2 mb-3">
+                                                    <span
+                                                        class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-black uppercase tracking-[0.18em]">
+                                                        <span>✓</span> Task Completed
+                                                    </span>
+                                                    <span
+                                                        class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white text-emerald-700 text-[11px] font-black uppercase tracking-[0.18em] border border-emerald-100">
+                                                        {{ now()->toDateString() }}
+                                                    </span>
+                                                </div>
+
+                                                <p class="text-2xl md:text-3xl font-black text-slate-800 tracking-tight mb-2">
+                                                    Nice work, you finished today’s challenge.
+                                                </p>
+                                                <p class="text-slate-600 text-sm md:text-base font-medium leading-relaxed max-w-2xl">
+                                                    Your progress is saved. You can still upload proof below for feedback,
+                                                    or come back tomorrow for a new task.
+                                                </p>
+                                            </div>
+                                        </div>
                                     </div>
                                 @else
                                     <div class="space-y-4">
@@ -168,23 +198,21 @@
                         {{-- ===== UPLOAD PROOF — di luar if/else, hanya kalau completed ===== --}}
                         @if ($todayChallenge?->is_completed)
                             <div
-                                class="bg-white rounded-[2rem] shadow-[0_4px_20px_rgb(0,0,0,0.03)]
-            border border-slate-100 p-6 md:p-8 mt-6 text-left">
+                                class="bg-white rounded-[2rem] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-slate-100 p-5 md:p-6 mt-6 text-left">
 
-                                <h3 class="font-extrabold text-slate-800 mb-1 text-lg flex items-center gap-2">
+                                <h3 class="font-extrabold text-slate-800 mb-1 text-base md:text-lg flex items-center gap-2">
                                     <span class="text-2xl">📤</span>
                                     Upload Proof
                                     <span class="text-slate-400 text-sm font-medium ml-1">(Optional)</span>
                                 </h3>
-                                <p class="text-sm text-slate-400 mb-5">
+                                <p class="text-sm text-slate-400 mb-4">
                                     Upload your work and get AI feedback & score
                                 </p>
 
                                 {{-- Existing score kalau sudah pernah upload --}}
                                 @if (isset($todayChallenge->metadata['proof_score']) && ($todayChallenge->metadata['proof_scored'] ?? false))
                                     <div
-                                        class="bg-gradient-to-br from-[#F3EFFF] to-[#EAE1FF]
-                border border-[#B28CFF]/20 rounded-2xl p-5 mb-5 shadow-sm">
+                                        class="bg-gradient-to-br from-[#F3EFFF] to-[#EAE1FF] border border-[#B28CFF]/20 rounded-2xl p-4 mb-4 shadow-sm">
                                         <div class="flex items-center gap-4">
                                             <div
                                                 class="w-16 h-16 bg-white rounded-full flex items-center
@@ -221,8 +249,7 @@
                                 {{-- Flash result setelah upload --}}
                                 @if (session('proof_result'))
                                     <div
-                                        class="bg-gradient-to-br from-[#F3EFFF] to-[#EAE1FF]
-                border-2 border-[#B28CFF] rounded-2xl p-5 mb-5 shadow-sm">
+                                        class="bg-gradient-to-br from-[#F3EFFF] to-[#EAE1FF] border-2 border-[#B28CFF] rounded-2xl p-4 mb-4 shadow-sm">
                                         <div class="flex items-center gap-4">
                                             <div
                                                 class="w-16 h-16 bg-white rounded-full flex items-center
@@ -272,7 +299,7 @@
                                         value="{{ $todayChallenge->getKey() }}">
 
                                     <div class="border-2 border-dashed border-slate-200 bg-slate-50
-                    rounded-[1.5rem] p-8 text-center hover:border-[#B28CFF]
+                    rounded-[1.5rem] p-6 text-center hover:border-[#B28CFF]
                     hover:bg-[#F3EFFF]/50 transition-colors cursor-pointer mb-5 group"
                                         onclick="document.getElementById('proofFile').click()">
                                         <div

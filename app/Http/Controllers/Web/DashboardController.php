@@ -14,10 +14,17 @@ use \App\Models\ChallengePoke;
 use Illuminate\Http\Request;
 use  \App\Models\Notification;
 use Illuminate\Support\Carbon;
-use \MongoDB\BSON\UTCDateTime;
 
 class DashboardController extends Controller
 {
+    private function todayRange(): array
+    {
+        $start = now()->startOfDay();
+        $end = now()->endOfDay();
+
+        return [$start, $end];
+    }
+
     public function index()
     {
         $userId = session('web_user.id');
@@ -44,7 +51,7 @@ class DashboardController extends Controller
         $completedDates = $challengesInRange->map(function ($c) {
             $d = $c->challenge_date;
             if ($d instanceof \Carbon\Carbon) return $d->toDateString();
-            if ($d instanceof \MongoDB\BSON\UTCDateTime) {
+            if (is_object($d) && method_exists($d, 'toDateTime')) {
                 return \Carbon\Carbon::createFromTimestamp(
                     $d->toDateTime()->getTimestamp()
                 )->toDateString();
@@ -58,10 +65,13 @@ class DashboardController extends Controller
             'is_completed' => in_array($date, $completedDates, true),
         ], $last7Days);
 
+        [$startOfDay, $endOfDay] = $this->todayRange();
+
         // Today challenge
         $todayChallenge = UserDailyChallenge::with('challenge')
             ->where('user_id', $userId)
-            ->where('challenge_date', $today)
+            ->where('challenge_date', '>=', $startOfDay)
+            ->where('challenge_date', '<=', $endOfDay)
             ->first();
 
         // Top leaderboard
@@ -90,10 +100,12 @@ class DashboardController extends Controller
         $userId = session('web_user.id');
         $today  = now()->toDateString();
 
-        // Pakai string comparison, bukan date cast
+        [$startOfDay, $endOfDay] = $this->todayRange();
+
         $todayChallenge = UserDailyChallenge::with('challenge')
             ->where('user_id', $userId)
-            ->where('challenge_date', $today)
+            ->where('challenge_date', '>=', $startOfDay)
+            ->where('challenge_date', '<=', $endOfDay)
             ->first();
 
         $history = UserDailyChallenge::with('challenge')
