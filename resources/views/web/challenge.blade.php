@@ -133,14 +133,56 @@
                                     </div>
                                 @else
                                     <div class="space-y-4">
-                                        <textarea id="reflection"
-                                            class="w-full bg-slate-50 border border-slate-200 rounded-[1.5rem] p-5 text-slate-700 font-medium focus:ring-4 focus:ring-[#B28CFF]/20 focus:border-[#B28CFF] transition-all resize-none shadow-inner"
-                                            rows="2" placeholder="Write a quick reflection (optional)..."></textarea>
-
-                                        <button onclick="completeChallenge('{{ $todayChallenge->getKey() }}')"
+                                        <p class="text-sm text-slate-500 leading-relaxed mb-2">
+                                            Click Start, write your reflection, then upload proof in the same flow.
+                                        </p>
+                                        <button id="startChallengeBtn" onclick="showReflectionPanel()"
                                             class="w-full bg-slate-800 text-white py-4 rounded-full font-extrabold text-base hover:bg-slate-700 hover:shadow-lg hover:shadow-slate-800/20 hover:-translate-y-0.5 active:scale-95 transition-all">
                                             Start Challenge <span class="text-xl ml-1">🚀</span>
                                         </button>
+
+                                        <div id="reflectionPanel" class="hidden space-y-4 mt-4">
+                                            <form method="POST" action="{{ route('web.challenge.upload') }}"
+                                                enctype="multipart/form-data" class="space-y-4">
+                                                @csrf
+                                                <input type="hidden" name="user_daily_challenge_id"
+                                                    value="{{ $todayChallenge->getKey() }}">
+
+                                                <textarea name="reflection" id="reflection"
+                                                    class="w-full bg-slate-50 border border-slate-200 rounded-[1.5rem] p-5 text-slate-700 font-medium focus:ring-4 focus:ring-[#B28CFF]/20 focus:border-[#B28CFF] transition-all resize-none shadow-inner"
+                                                    rows="4" placeholder="Write your plan or reflection before starting the challenge..."></textarea>
+
+                                                <div class="border-2 border-dashed border-slate-200 bg-slate-50 rounded-[1.5rem] p-6 text-center hover:border-[#B28CFF] hover:bg-[#F3EFFF]/50 transition-colors cursor-pointer mb-5 group"
+                                                    onclick="document.getElementById('proofFile').click()">
+                                                    <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center text-3xl mx-auto mb-4 shadow-sm group-hover:scale-110 transition-transform">
+                                                        📎
+                                                    </div>
+                                                    <p class="font-extrabold text-slate-700">Click to upload your proof</p>
+                                                    <p class="text-xs text-slate-400 mt-2 font-medium uppercase tracking-wider">
+                                                        PDF, Image, or any file (max 50MB)
+                                                    </p>
+                                                    <p id="selectedFileName" class="text-sm text-[#9261F3] mt-3 font-bold hidden bg-white inline-block px-4 py-1.5 rounded-full border border-[#EAE1FF]"></p>
+                                                </div>
+
+                                                <input type="file" id="proofFile" name="file" required class="hidden"
+                                                    onchange="
+                    const name = this.files[0]?.name;
+                    const el = document.getElementById('selectedFileName');
+                    const btn = document.getElementById('uploadBtn');
+                    if (name) {
+                        el.textContent = '📎 ' + name;
+                        el.classList.remove('hidden');
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    }
+                ">
+
+                                                <button type="submit" id="uploadBtn" disabled
+                                                    class="w-full bg-[#9261F3] text-white py-4 rounded-full font-extrabold text-base hover:bg-[#7B4FD9] hover:shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all opacity-50 cursor-not-allowed">
+                                                    Submit Reflection & Proof ✨
+                                                </button>
+                                            </form>
+                                        </div>
                                     </div>
                                     {{-- Tambah setelah button "Start Challenge", sebelum @endif --}}
                                     @if (!$todayChallenge->is_completed)
@@ -209,45 +251,12 @@
                                     Upload your work and get AI feedback & score
                                 </p>
 
-                                {{-- Existing score kalau sudah pernah upload --}}
-                                @if (isset($todayChallenge->metadata['proof_score']) && ($todayChallenge->metadata['proof_scored'] ?? false))
-                                    <div
-                                        class="bg-gradient-to-br from-[#F3EFFF] to-[#EAE1FF] border border-[#B28CFF]/20 rounded-2xl p-4 mb-4 shadow-sm">
-                                        <div class="flex items-center gap-4">
-                                            <div
-                                                class="w-16 h-16 bg-white rounded-full flex items-center
-                        justify-center text-2xl font-black text-[#9261F3] shadow-sm
-                        flex-shrink-0">
-                                                {{ $todayChallenge->metadata['proof_score'] }}
-                                            </div>
-                                            <div class="flex-1">
-                                                <p class="font-black text-slate-800 tracking-tight text-sm">
-                                                    AI Score & Feedback
-                                                </p>
-                                                <p class="text-sm text-slate-600 mt-1 font-medium leading-relaxed">
-                                                    {{ $todayChallenge->metadata['proof_feedback'] ?? '' }}
-                                                </p>
-                                                @if (!empty($todayChallenge->metadata['proof_suggestions']))
-                                                    <p class="text-xs text-[#9261F3] mt-2 font-semibold">
-                                                        💡 {{ $todayChallenge->metadata['proof_suggestions'] }}
-                                                    </p>
-                                                @endif
-                                            </div>
-                                            <div class="text-4xl opacity-60">
-                                                @if (($todayChallenge->metadata['proof_score'] ?? 0) >= 80)
-                                                    🏆
-                                                @elseif(($todayChallenge->metadata['proof_score'] ?? 0) >= 50)
-                                                    ⭐
-                                                @else
-                                                    📝
-                                                @endif
-                                            </div>
-                                        </div>
-                                    </div>
-                                @endif
+                                {{-- Existing proof result atau score --}}
+                                @php
+                                    $hasProofResult = session('proof_result') || isset($todayChallenge->metadata['proof_score']);
+                                @endphp
 
-                                {{-- Flash result setelah upload --}}
-                                @if (session('proof_result'))
+                                @if ($hasProofResult)
                                     <div
                                         class="bg-gradient-to-br from-[#F3EFFF] to-[#EAE1FF] border-2 border-[#B28CFF] rounded-2xl p-4 mb-4 shadow-sm">
                                         <div class="flex items-center gap-4">
@@ -255,25 +264,32 @@
                                                 class="w-16 h-16 bg-white rounded-full flex items-center
                         justify-center text-2xl font-black text-[#9261F3] shadow-sm
                         flex-shrink-0">
-                                                {{ session('proof_result.score') }}
+                                                {{ session('proof_result.score') ?? $todayChallenge->metadata['proof_score'] ?? '—' }}
                                             </div>
                                             <div class="flex-1">
                                                 <p class="font-black text-slate-800 tracking-tight text-sm">
                                                     ✅ AI Feedback
                                                 </p>
                                                 <p class="text-sm text-slate-600 mt-1 leading-relaxed">
-                                                    {{ session('proof_result.feedback') }}
+                                                    {{ session('proof_result.feedback') ?? $todayChallenge->metadata['proof_feedback'] ?? 'Your proof has been reviewed.' }}
                                                 </p>
                                                 @if (session('proof_result.suggestions'))
                                                     <p class="text-xs text-[#9261F3] mt-2 font-semibold">
                                                         💡 {{ session('proof_result.suggestions') }}
                                                     </p>
+                                                @elseif(!empty($todayChallenge->metadata['proof_suggestions']))
+                                                    <p class="text-xs text-[#9261F3] mt-2 font-semibold">
+                                                        💡 {{ $todayChallenge->metadata['proof_suggestions'] }}
+                                                    </p>
                                                 @endif
                                             </div>
                                             <div class="text-4xl opacity-60">
-                                                @if ((session('proof_result.score') ?? 0) >= 80)
+                                                @php
+                                                    $scoreValue = session('proof_result.score') ?? $todayChallenge->metadata['proof_score'] ?? 0;
+                                                @endphp
+                                                @if ($scoreValue >= 80)
                                                     🏆
-                                                @elseif((session('proof_result.score') ?? 0) >= 50)
+                                                @elseif($scoreValue >= 50)
                                                     ⭐
                                                 @else
                                                     📝
@@ -291,12 +307,13 @@
                                     </div>
                                 @endif
 
-                                {{-- Upload form --}}
-                                <form method="POST" action="{{ route('web.challenge.upload') }}"
-                                    enctype="multipart/form-data">
-                                    @csrf
-                                    <input type="hidden" name="user_daily_challenge_id"
-                                        value="{{ $todayChallenge->getKey() }}">
+                                @unless ($hasProofResult)
+                                    {{-- Upload form --}}
+                                    <form method="POST" action="{{ route('web.challenge.upload') }}"
+                                        enctype="multipart/form-data">
+                                        @csrf
+                                        <input type="hidden" name="user_daily_challenge_id"
+                                            value="{{ $todayChallenge->getKey() }}">
 
                                     <div class="border-2 border-dashed border-slate-200 bg-slate-50
                     rounded-[1.5rem] p-6 text-center hover:border-[#B28CFF]
@@ -337,6 +354,7 @@
                                         Upload & Get AI Score ✨
                                     </button>
                                 </form>
+                            @endunless
                             </div>
                         @endif
                     </div>
@@ -512,6 +530,20 @@
                 toast.style.transform = 'translateX(100%)'
                 setTimeout(() => toast.remove(), 300)
             }, 3000)
+        }
+
+        function showReflectionPanel() {
+            const panel = document.getElementById('reflectionPanel')
+            const startBtn = document.getElementById('startChallengeBtn')
+
+            if (!panel || !startBtn) {
+                return
+            }
+
+            panel.classList.remove('hidden')
+            startBtn.disabled = true
+            startBtn.classList.add('opacity-50', 'cursor-not-allowed')
+            startBtn.innerText = 'Reflection ready — submit below'
         }
 
         async function completeChallenge(challengeId) {

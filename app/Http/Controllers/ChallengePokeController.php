@@ -6,6 +6,7 @@ use App\Models\ChallengePoke;
 use App\Models\User;
 use App\Models\UserDailyChallenge;
 use App\Models\UserFollow;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -89,12 +90,16 @@ class ChallengePokeController extends Controller
             ],
         ]);
 
-        // Fix: pakai $senderId dan $receiverId, bukan $authId/$userId
-        \App\Services\NotificationService::notifyPoke(
-            $senderId,
-            $receiverId,
-            $assignment->challenge?->title ?? 'Daily Challenge'
-        );
+        // ✅ Kirim notif poke
+        try {
+            NotificationService::notifyPoke(
+                $senderId,
+                $receiverId,
+                $assignment->challenge?->title ?? 'Daily Challenge'
+            );
+        } catch (\Exception $e) {
+            \Log::error('Failed to create poke notification: ' . $e->getMessage());
+        }
 
         return response()->json([
             'status'  => 'success',

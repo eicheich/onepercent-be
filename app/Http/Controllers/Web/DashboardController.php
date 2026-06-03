@@ -207,42 +207,64 @@ class DashboardController extends Controller
     {
         $userId = session('web_user.id');
 
-        $pokes = ChallengePoke::where('receiver_id', $userId)
+        // Query notification dari table Notification (follow, poke, achievement, dll)
+        $notificationRecords = Notification::where('user_id', $userId)
             ->orderBy('created_at', 'desc')
             ->limit(50)
             ->get();
 
-        $senderIds = $pokes->pluck('sender_id')
+        // Get actor info untuk menampilkan nama/avatar
+        $actorIds = $notificationRecords
+            ->pluck('actor_id')
+            ->filter()
             ->map(fn($id) => (string) $id)
-            ->unique()->values()->all();
+            ->unique()
+            ->values()
+            ->all();
 
-        $senders = count($senderIds) > 0
-            ? User::whereIn('_id', $senderIds)->get()
-            ->keyBy(fn($u) => (string) $u->getKey())
+        $actors = count($actorIds) > 0
+            ? User::whereIn('_id', $actorIds)->get()
+                ->keyBy(fn($u) => (string) $u->getKey())
             : collect();
 
-        $notifications = $pokes->map(function ($poke) use ($senders) {
-            $sender = $senders->get((string) $poke->sender_id);
+        // Format notifikasi untuk view
+        $notifications = $notificationRecords->map(function ($notif) use ($actors) {
+            $actor = $actors->get((string) $notif->actor_id);
+            $data = $notif->data ?? [];
+
             return [
-                'id' => (string) $poke->getKey(),
-                'sender_name' => $sender?->name ?? 'Someone',
-                'sender_avatar' => $sender?->avatar,
-                'type' => $poke->type,
-                'message' => $poke->message,
-                'challenge_title' => $poke->metadata['challenge_title'] ?? '',
-                'read_at' => $poke->read_at,
-                'created_at' => $poke->created_at,
+                'id' => (string) $notif->getKey(),
+                'type' => $notif->type,
+                'title' => $notif->title,
+                'body' => $notif->body,
+                'icon' => $notif->icon,
+                'actor_name' => $actor?->name ?? $data['actor_name'] ?? 'Someone',
+                'actor_avatar' => $actor?->avatar ?? $data['actor_avatar'] ?? null,
+                'challenge_title' => $data['challenge_title'] ?? '',
+                'read_at' => $notif->read_at,
+                'created_at' => $notif->created_at,
             ];
         });
 
         $unreadCount = $notifications->whereNull('read_at')->count();
 
         // Auto mark as read
-        Notification::where('receiver_id', $userId)
+        Notification::where('user_id', $userId)
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
         return view('web.notifications', compact('notifications', 'unreadCount'));
+    }
+
+    public function readAllNotifications()
+    {
+        $userId = session('web_user.id');
+
+        Notification::where('user_id', $userId)
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        return back()->with('success', 'All notifications marked as read');
     }
 
     public function uploadProof(Request $request)
@@ -250,6 +272,7 @@ class DashboardController extends Controller
         $request->validate([
             'file' => 'required|file|max:51200',
             'user_daily_challenge_id' => 'required|string',
+            'reflection' => 'nullable|string|max:1200',
         ]);
 
         $userId = session('web_user.id');
@@ -265,6 +288,7 @@ class DashboardController extends Controller
         $file = $request->file('file');
         $mimeType = $file->getMimeType();
         $base64 = base64_encode(file_get_contents($file->getRealPath()));
+        $reflection = trim((string) ($request->reflection ?? ''));
 
         try {
             $gemini = app(GeminiChallengeService::class);
@@ -276,10 +300,22 @@ class DashboardController extends Controller
             );
 
             $metadata = (array) ($challenge->metadata ?? []);
+            if ($reflection !== '') {
+                $metadata['reflection'] = $reflection;
+                $metadata['reflection_submitted_at'] = now()->toIso8601String();
+            }
             $metadata['proof_score'] = $score['score'];
             $metadata['proof_feedback'] = $score['feedback'];
+            $metadata['proof_scored'] = true;
             $metadata['proof_submitted_at'] = now()->toIso8601String();
-            $challenge->forceFill(['metadata' => $metadata])->save();
+
+            $challenge->forceFill([
+                'is_completed' => true,
+                'completed_at' => now(),
+                'metadata' => $metadata,
+            ])->save();
+
+            $this->updateStreak($userId);
 
             // Check achievements
             app(AchievementService::class)->checkAndUnlock($userId);
@@ -291,6 +327,35 @@ class DashboardController extends Controller
         } catch (\Throwable $e) {
             return back()->withErrors(['error' => 'AI scoring failed: ' . $e->getMessage()]);
         }
+    }
+
+    private function updateStreak(string $userId): void
+    {
+        $user = User::find($userId);
+        if (!$user) {
+            return;
+        }
+
+        $today = now()->toDateString();
+        $yesterday = now()->subDay()->toDateString();
+        $lastDate = $user->last_completed_date?->toDateString();
+
+        if ($lastDate === $today) {
+            return;
+        }
+
+        if ($lastDate === $yesterday) {
+            $user->current_streak = ($user->current_streak ?? 0) + 1;
+        } else {
+            $user->current_streak = 1;
+        }
+
+        if ($user->current_streak > ($user->longest_streak ?? 0)) {
+            $user->longest_streak = $user->current_streak;
+        }
+
+        $user->last_completed_date = $today;
+        $user->save();
     }
     public function pokeFriend(string $userId)
     {
@@ -353,6 +418,17 @@ class DashboardController extends Controller
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        
+        // Create poke notification
+        try {
+            \App\Services\NotificationService::notifyPoke(
+                $myId,
+                $userId,
+                $challenge->challenge?->title ?? 'Challenge'
+            );
+        } catch (\Exception $e) {
+            \Log::error('Failed to create poke notification: ' . $e->getMessage());
+        }
 
         return back()->with('successpoke', '👋 Poked ' . $targetUser->name . ' successfully!');
     }

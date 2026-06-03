@@ -10,43 +10,65 @@ class NotificationService
     // Follow
     public static function notifyFollow(string $followerId, string $targetId): void
     {
+        \Log::info('notifyFollow called', ['followerId' => $followerId, 'targetId' => $targetId]);
+        
         $follower = User::find($followerId);
-        if (!$follower || $followerId === $targetId) return;
+        \Log::info('Found follower', ['follower' => $follower ? $follower->name : 'NULL']);
+        
+        if (!$follower || $followerId === $targetId) {
+            \Log::warning('notifyFollow aborted - no follower or same ID');
+            return;
+        }
 
-        Notification::create([
-            'user_id'  => $targetId,
-            'actor_id' => $followerId,
-            'type'     => 'follow',
-            'title'    => $follower->name . ' followed you',
-            'body'     => 'You have a new follower!',
-            'icon'     => '👥',
-            'data'     => [
-                'actor_name'   => $follower->name,
-                'actor_avatar' => $follower->avatar,
-            ],
-            'read_at'  => null,
-        ]);
+        try {
+            Notification::create([
+                'user_id'  => $targetId,
+                'actor_id' => $followerId,
+                'type'     => 'follow',
+                'title'    => $follower->name . ' followed you',
+                'body'     => 'You have a new follower!',
+                'icon'     => '👥',
+                'data'     => [
+                    'actor_name'   => $follower->name,
+                    'actor_avatar' => $follower->avatar,
+                ],
+                'read_at'  => null,
+            ]);
+            \Log::info('Follow notification created successfully', ['targetId' => $targetId]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to create follow notification: ' . $e->getMessage(), ['exception' => $e]);
+        }
     }
 
     // Follow back / mutual
     public static function notifyFollowBack(string $followerId, string $targetId): void
     {
+        \Log::info('notifyFollowBack called', ['followerId' => $followerId, 'targetId' => $targetId]);
+        
         $follower = User::find($followerId);
-        if (!$follower) return;
+        if (!$follower) {
+            \Log::warning('notifyFollowBack aborted - follower not found');
+            return;
+        }
 
-        Notification::create([
-            'user_id'  => $targetId,
-            'actor_id' => $followerId,
-            'type'     => 'follow_back',
-            'title'    => $follower->name . ' followed you back!',
-            'body'     => 'You are now mutual friends 🤝',
-            'icon'     => '🤝',
-            'data'     => [
-                'actor_name'   => $follower->name,
-                'actor_avatar' => $follower->avatar,
-            ],
-            'read_at'  => null,
-        ]);
+        try {
+            Notification::create([
+                'user_id'  => $targetId,
+                'actor_id' => $followerId,
+                'type'     => 'follow_back',
+                'title'    => $follower->name . ' followed you back!',
+                'body'     => 'You are now mutual friends 🤝',
+                'icon'     => '🤝',
+                'data'     => [
+                    'actor_name'   => $follower->name,
+                    'actor_avatar' => $follower->avatar,
+                ],
+                'read_at'  => null,
+            ]);
+            \Log::info('Follow back notification created successfully', ['targetId' => $targetId]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to create follow_back notification: ' . $e->getMessage(), ['exception' => $e]);
+        }
     }
 
     // Poke
@@ -55,23 +77,33 @@ class NotificationService
         string $receiverId,
         string $challengeTitle
     ): void {
+        \Log::info('notifyPoke called', ['senderId' => $senderId, 'receiverId' => $receiverId, 'challengeTitle' => $challengeTitle]);
+        
         $sender = User::find($senderId);
-        if (!$sender) return;
+        if (!$sender) {
+            \Log::warning('notifyPoke aborted - sender not found');
+            return;
+        }
 
-        Notification::create([
-            'user_id'  => $receiverId,
-            'actor_id' => $senderId,
-            'type'     => 'poke',
-            'title'    => $sender->name . ' poked you! 👋',
-            'body'     => 'Don\'t forget your challenge today!',
-            'icon'     => '👋',
-            'data'     => [
-                'actor_name'      => $sender->name,
-                'actor_avatar'    => $sender->avatar,
-                'challenge_title' => $challengeTitle,
-            ],
-            'read_at'  => null,
-        ]);
+        try {
+            Notification::create([
+                'user_id'  => $receiverId,
+                'actor_id' => $senderId,
+                'type'     => 'poke',
+                'title'    => $sender->name . ' poked you! 👋',
+                'body'     => 'Don\'t forget your challenge today!',
+                'icon'     => '👋',
+                'data'     => [
+                    'actor_name'      => $sender->name,
+                    'actor_avatar'    => $sender->avatar,
+                    'challenge_title' => $challengeTitle,
+                ],
+                'read_at'  => null,
+            ]);
+            \Log::info('Poke notification created successfully', ['receiverId' => $receiverId]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to create poke notification: ' . $e->getMessage(), ['exception' => $e]);
+        }
     }
 
     // Challenge completed — notify friends

@@ -22,9 +22,9 @@
     @php
     $today     = now()->toDateString();
     $yesterday = now()->subDay()->toDateString();
-    $todayNotifs     = $notifications->filter(fn($n) => $n->created_at?->toDateString() === $today);
-    $yesterdayNotifs = $notifications->filter(fn($n) => $n->created_at?->toDateString() === $yesterday);
-    $olderNotifs     = $notifications->filter(fn($n) => $n->created_at?->toDateString() < $yesterday);
+    $todayNotifs     = $notifications->filter(fn($n) => $n['created_at']?->toDateString() === $today);
+    $yesterdayNotifs = $notifications->filter(fn($n) => $n['created_at']?->toDateString() === $yesterday);
+    $olderNotifs     = $notifications->filter(fn($n) => $n['created_at']?->toDateString() < $yesterday);
     @endphp
 
     @foreach([
@@ -47,43 +47,43 @@
         <div class="space-y-3">
             @foreach($group['items'] as $notif)
             <div class="group bg-white rounded-2xl p-4 shadow-sm border transition-all duration-300 hover:shadow-md flex items-start gap-4 relative overflow-hidden
-                        {{ is_null($notif->read_at)
+                        {{ is_null($notif['read_at'])
                            ? 'border-[#B28CFF]/40 bg-slate-50/30'
                            : 'border-slate-100 hover:border-slate-200' }}">
 
                 {{-- Left Accent Line for Unread --}}
-                @if(is_null($notif->read_at))
+                @if(is_null($notif['read_at']))
                     <div class="absolute left-0 top-0 bottom-0 w-1 bg-[#9261F3]"></div>
                 @endif
 
                 {{-- Icon / Avatar --}}
                 <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0 border border-slate-100 shadow-inner-sm transition-transform duration-300 group-hover:scale-105
-                            {{ match($notif->type) {
+                            {{ match($notif['type']) {
                                 'follow', 'follow_back' => 'bg-blue-50 text-blue-500',
                                 'poke'                  => 'bg-orange-50 text-orange-500',
                                 'achievement'           => 'bg-amber-50 text-amber-500',
                                 'friend_completed'      => 'bg-emerald-50 text-emerald-500',
                                 default                 => 'bg-[#9261F3]/10 text-[#9261F3]'
                             } }}">
-                    @php $avatar = $notif->data['actor_avatar'] ?? null @endphp
+                    @php $avatar = $notif['actor_avatar'] ?? null @endphp
                     @if($avatar && str_starts_with($avatar, 'http'))
                         <img src="{{ $avatar }}" referrerpolicy="no-referrer" class="w-full h-full rounded-2xl object-cover p-0.5 bg-white">
                     @elseif($avatar && str_starts_with($avatar, 'data:image'))
                         <img src="{{ $avatar }}" class="w-full h-full rounded-2xl object-cover p-0.5 bg-white">
                     @else
-                        {{ $notif->icon ?? '🔔' }}
+                        {{ $notif['icon'] ?? '🔔' }}
                     @endif
                 </div>
 
                 {{-- Content Body --}}
                 <div class="flex-1 min-w-0 py-0.5">
-                    <p class="font-bold text-slate-800 text-sm tracking-tight {{ is_null($notif->read_at) ? 'text-[#9261F3]' : '' }}">
-                        {{ $notif->title }}
+                    <p class="font-bold text-slate-800 text-sm tracking-tight {{ is_null($notif['read_at']) ? 'text-[#9261F3]' : '' }}">
+                        {{ $notif['title'] }}
                     </p>
 
-                    @if($notif->body)
+                    @if($notif['body'])
                         <p class="text-[13px] font-medium text-slate-500 mt-1 line-clamp-2 leading-relaxed">
-                            {{ $notif->body }}
+                            {{ $notif['body'] }}
                         </p>
                     @endif
 
@@ -91,12 +91,12 @@
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        {{ $notif->created_at?->diffForHumans() }}
+                        {{ $notif['created_at']?->diffForHumans() }}
                     </p>
                 </div>
 
                 {{-- Unread Dot Indicator (Right Side) --}}
-                @if(is_null($notif->read_at))
+                @if(is_null($notif['read_at']))
                 <div class="w-2.5 h-2.5 rounded-full bg-[#9261F3] flex-shrink-0 mt-2 shadow-[0_0_8px_rgba(146,97,243,0.5)]"></div>
                 @endif
 

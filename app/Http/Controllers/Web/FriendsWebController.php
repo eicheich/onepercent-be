@@ -72,6 +72,26 @@ class FriendsWebController extends Controller
                 'follower_id'  => $userId,
                 'following_id' => $id,
             ]);
+            
+            // Notify the target user
+            try {
+                \App\Services\NotificationService::notifyFollow($userId, $id);
+            } catch (\Exception $e) {
+                \Log::error('Failed to create follow notification: ' . $e->getMessage());
+            }
+            
+            // Check if mutual follow → notify follow back
+            $theyFollowMe = UserFollow::where('follower_id', $id)
+                ->where('following_id', $userId)
+                ->exists();
+            
+            if ($theyFollowMe) {
+                try {
+                    \App\Services\NotificationService::notifyFollowBack($userId, $id);
+                } catch (\Exception $e) {
+                    \Log::error('Failed to create follow_back notification: ' . $e->getMessage());
+                }
+            }
         }
 
         return back()->with('successfol', 'Followed successfully!');

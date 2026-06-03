@@ -544,8 +544,10 @@ PROMPT;
 
 Challenge: {$challengeTitle}
 Description: {$challengeContent}
+File type: {$mimeType}
 
-Please evaluate the uploaded file/image as proof of completing this challenge.
+Review the uploaded file/image and judge whether it is relevant proof that the user completed the challenge. If the proof is not related, irrelevant, or does not show evidence of progress toward the challenge, give a low score and explain that the uploaded proof is not relevant. If it is related and clearly supports completion, give a higher score.
+
 Respond ONLY with valid JSON, no markdown, no explanation:
 {
   \"score\": <integer 0-100>,
@@ -588,16 +590,24 @@ Respond ONLY with valid JSON, no markdown, no explanation:
         $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
 
         // Clean JSON dari markdown kalau ada
-        $text = preg_replace('/```json\s*|\s*```/', '', trim($text));
+        $cleanText = preg_replace('/```json\s*|\s*```/', '', trim($text));
 
-        $result = json_decode($text, true);
+        $result = json_decode($cleanText, true);
+
+        if (!$result) {
+            // Coba ekstrak objek JSON dari teks bebas jika model menambahkan teks lain
+            if (preg_match('/\{(?:[^{}]|(?R))*\}/s', $cleanText, $matches)) {
+                $result = json_decode($matches[0], true);
+            }
+        }
 
         if (!$result || !isset($result['score'])) {
-            // Fallback kalau parse gagal
+            $parsed = $this->parseScoreResponse($text);
+
             return [
-                'score'       => 70,
-                'feedback'    => 'Good effort! Keep it up.',
-                'suggestions' => 'Try to be more detailed next time.',
+                'score'       => (int) ($parsed['score'] ?? 70),
+                'feedback'    => $parsed['feedback'] ?? 'Good effort! Keep it up.',
+                'suggestions' => $parsed['suggestions'] ?? 'Try to be more detailed next time.',
             ];
         }
 
@@ -610,8 +620,9 @@ Respond ONLY with valid JSON, no markdown, no explanation:
 
     private function parseScoreResponse(string $text): array
     {
-        $score    = 70; // default
-        $feedback = 'Good effort on completing the challenge!';
+        $score       = 70; // default
+        $feedback    = 'Good effort on completing the challenge!';
+        $suggestions = '';
 
         $lines = preg_split('/\r\n|\r|\n/', $text) ?: [];
         foreach ($lines as $line) {
@@ -625,8 +636,11 @@ Respond ONLY with valid JSON, no markdown, no explanation:
             if (str_starts_with(strtolower($line), 'feedback:')) {
                 $feedback = trim(str_replace('Feedback:', '', $line));
             }
+            if (str_starts_with(strtolower($line), 'suggestions:')) {
+                $suggestions = trim(str_replace('Suggestions:', '', $line));
+            }
         }
 
-        return compact('score', 'feedback');
+        return compact('score', 'feedback', 'suggestions');
     }
 }

@@ -40,7 +40,12 @@ class FollowController extends Controller
         ]);
 
         // Notif ke target
-        NotificationService::notifyFollow($authId, $userId);
+        try {
+                        \Log::info('Attempting to create follow notification', ['follower' => $authId, 'target' => $userId]);
+            NotificationService::notifyFollow($authId, $userId);
+        } catch (\Exception $e) {
+            \Log::error('Failed to create follow notification: ' . $e->getMessage());
+        }
 
         // Cek apakah mutual → notif follow back
         $theyFollowMe = UserFollow::where('follower_id', $userId)
@@ -48,7 +53,11 @@ class FollowController extends Controller
             ->exists();
 
         if ($theyFollowMe) {
-            NotificationService::notifyFollowBack($authId, $userId);
+            try {
+                NotificationService::notifyFollowBack($authId, $userId);
+            } catch (\Exception $e) {
+                \Log::error('Failed to create follow_back notification: ' . $e->getMessage());
+            }
         }
 
         return response()->json([

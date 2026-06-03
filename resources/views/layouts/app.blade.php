@@ -208,7 +208,7 @@
 
                         {{-- Unread badge diperbaiki --}}
                         @php
-                            $unread = \App\Models\Notification::where('receiver_id', session('web_user.id'))
+                            $unread = \App\Models\Notification::where('user_id', session('web_user.id'))
                                 ->whereNull('read_at')
                                 ->count();
                         @endphp
